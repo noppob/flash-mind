@@ -85,6 +85,16 @@ pnpm typecheck   # 型チェックのみ (tsc --noEmit)
 
 ---
 
+## 仕様書
+
+コードから書き起こした仕様書を `docs/` 配下に置いています。バックエンド着手や多プラットフォーム化の際に参照してください。
+
+- [docs/product.md](docs/product.md) — プロダクト概要・機能一覧・用語集・現状ステータス
+- [docs/screens.md](docs/screens.md) — 11 画面の構成・props・state・遷移図（Mermaid）
+- [docs/data-model.md](docs/data-model.md) — エンティティ定義・ER 図・DB スキーマ案・TBD 一覧
+
+---
+
 ## ロードマップ
 
 ### フェーズ 1: UI 整備（現在地）
