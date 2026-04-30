@@ -1,12 +1,14 @@
 {
-  "name": "my-project",
+  "name": "flash-mind",
   "version": "0.1.0",
   "private": true,
+  "description": "AI-powered spaced repetition vocabulary app (Next.js + React, future iOS via Capacitor)",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
