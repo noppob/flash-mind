@@ -1,10 +1,9 @@
 import React from "react"
 import type { Metadata, Viewport } from "next"
-import { Inter, Noto_Sans_JP } from "next/font/google"
+import { Inter } from "next/font/google"
 import "./globals.css"
 
 const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
-const _notoSansJP = Noto_Sans_JP({ subsets: ["latin"], variable: "--font-noto-sans-jp" })
 
 export const metadata: Metadata = {
   title: "FlashMind - AI Vocabulary App",
@@ -25,7 +24,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ja" className={`${_inter.variable} ${_notoSansJP.variable}`}>
+    <html lang="ja" className={_inter.variable}>
       <body className="font-sans antialiased">{children}</body>
     </html>
   )
