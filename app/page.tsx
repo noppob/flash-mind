@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { useSession } from "next-auth/react"
+import { Loader2 } from "lucide-react"
 import { IPhoneShell } from "@/components/iphone-shell"
 import { BottomTabs } from "@/components/bottom-tabs"
 import { HomeScreen } from "@/components/screens/home-screen"
@@ -14,6 +16,8 @@ import { StatsScreen } from "@/components/screens/stats-screen"
 import { SettingsScreen } from "@/components/screens/settings-screen"
 import { CardEditScreen } from "@/components/screens/card-edit-screen"
 import { CardListScreen } from "@/components/screens/card-list-screen"
+import { LoginScreen } from "@/components/screens/login-screen"
+import type { ReviewResult } from "@/lib/api/types"
 
 type Screen =
   | "home"
@@ -33,16 +37,21 @@ type TabId = "home" | "explore" | "import" | "stats" | "settings"
 const tabScreens: TabId[] = ["home", "explore", "import", "stats", "settings"]
 
 export default function Page() {
+  const { status } = useSession()
+
   const [screen, setScreen] = useState<Screen>("home")
   const [activeTab, setActiveTab] = useState<TabId>("home")
   const [previousScreen, setPreviousScreen] = useState<Screen>("home")
+  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null)
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
+  const [resultData, setResultData] = useState<ReviewResult | null>(null)
 
   const navigate = useCallback(
     (to: Screen) => {
       setPreviousScreen(screen)
       setScreen(to)
     },
-    [screen]
+    [screen],
   )
 
   const goBack = useCallback(() => {
@@ -54,44 +63,88 @@ export default function Page() {
     setScreen(tab as Screen)
   }, [])
 
-  // Check if current screen should show bottom tabs
+  const handleDeckSelect = useCallback(
+    (deckId: string) => {
+      setSelectedDeckId(deckId)
+      navigate("deck-detail")
+    },
+    [navigate],
+  )
+
+  const handleCardEdit = useCallback(
+    (cardId: string | null) => {
+      setSelectedCardId(cardId)
+      navigate("card-edit")
+    },
+    [navigate],
+  )
+
+  const handleSessionComplete = useCallback(
+    (result: ReviewResult) => {
+      setResultData(result)
+      navigate("results")
+    },
+    [navigate],
+  )
+
+  if (status === "loading") {
+    return (
+      <IPhoneShell>
+        <div className="h-full flex items-center justify-center">
+          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        </div>
+      </IPhoneShell>
+    )
+  }
+
+  if (status === "unauthenticated") {
+    return (
+      <IPhoneShell>
+        <LoginScreen />
+      </IPhoneShell>
+    )
+  }
+
   const showTabs = tabScreens.includes(screen as TabId)
 
   const renderScreen = () => {
     switch (screen) {
       case "home":
-        return (
-          <HomeScreen
-            onDeckSelect={() => navigate("deck-detail")}
-          />
-        )
+        return <HomeScreen onDeckSelect={handleDeckSelect} />
       case "deck-detail":
+        if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
         return (
           <DeckDetailScreen
+            deckId={selectedDeckId}
             onBack={() => setScreen("home")}
             onStartFlashcard={() => navigate("flashcard")}
             onStartQuiz={() => navigate("quiz")}
-            onCardEdit={() => navigate("card-edit")}
+            onCardEdit={handleCardEdit}
             onCardList={() => navigate("card-list")}
           />
         )
       case "flashcard":
+        if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
         return (
           <FlashcardScreen
+            deckId={selectedDeckId}
             onClose={() => setScreen("deck-detail")}
-            onComplete={() => navigate("results")}
+            onComplete={handleSessionComplete}
           />
         )
       case "quiz":
+        if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
         return (
           <QuizScreen
+            deckId={selectedDeckId}
             onClose={() => setScreen("deck-detail")}
-            onComplete={() => navigate("results")}
+            onComplete={handleSessionComplete}
           />
         )
       case "results":
         return (
           <ResultsScreen
+            result={resultData}
             onRetry={() => setScreen("flashcard")}
             onHome={() => {
               setActiveTab("home")
@@ -100,28 +153,47 @@ export default function Page() {
           />
         )
       case "explore":
-        return <ExploreScreen />
+        return <ExploreScreen onDeckImported={handleDeckSelect} />
       case "import":
         return <ImportScreen />
       case "stats":
         return <StatsScreen />
       case "settings":
-        return <SettingsScreen onImport={() => { setActiveTab("import" as TabId); setScreen("import") }} />
+        return (
+          <SettingsScreen
+            onImport={() => {
+              setActiveTab("import")
+              setScreen("import")
+            }}
+          />
+        )
       case "card-edit":
-        return <CardEditScreen onBack={goBack} />
+        if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
+        return (
+          <CardEditScreen
+            deckId={selectedDeckId}
+            cardId={selectedCardId}
+            onBack={goBack}
+          />
+        )
       case "card-list":
-        return <CardListScreen onBack={() => setScreen("deck-detail")} />
+        if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
+        return (
+          <CardListScreen
+            deckId={selectedDeckId}
+            onBack={() => setScreen("deck-detail")}
+            onCardEdit={handleCardEdit}
+          />
+        )
       default:
-        return <HomeScreen onDeckSelect={() => navigate("deck-detail")} />
+        return <HomeScreen onDeckSelect={handleDeckSelect} />
     }
   }
 
   return (
     <IPhoneShell>
       <div className="h-full flex flex-col">
-        <div className="flex-1 overflow-hidden">
-          {renderScreen()}
-        </div>
+        <div className="flex-1 overflow-hidden">{renderScreen()}</div>
         {showTabs && (
           <BottomTabs active={activeTab} onTabChange={handleTabChange} />
         )}

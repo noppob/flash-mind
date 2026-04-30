@@ -1,0 +1,244 @@
+// FlashMind database schema
+// Phase 1: SQLite (dev). Phase 2: switch to PostgreSQL (Neon / Vercel Postgres).
+// Json columns are used for child collections to keep dev/prod compatible
+// without provider-specific types (text[], jsonb).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// User & Auth.js
+// ===========================================================================
+
+model User {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  emailVerified    DateTime?
+  passwordHash     String?
+  displayName      String
+  image            String?
+  plan             String    @default("free")
+  darkMode         Boolean   @default(false)
+  ttsLanguage      String    @default("en-US")
+  reminderTime     String?
+  cloudSyncEnabled Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  decks       Deck[]
+  reviewLogs  ReviewLog[]
+  srsStates   CardSrsState[]
+  memos       Memo[]
+  imports     ImportedContent[]
+  accounts    Account[]
+  sessions    Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ===========================================================================
+// Decks & Cards
+// ===========================================================================
+
+model Deck {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  template  String   @default("スタンダード") // 'スタンダード' | '英単語拡張' | '詳細解説付き'
+  color     String   @default("bg-blue-500")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cards Card[]
+
+  @@index([userId])
+}
+
+model Card {
+  id               String   @id @default(cuid())
+  deckId           String
+  word             String
+  pronunciation    String?
+  pos              String?
+  meaning          String
+  category         String?
+  example          String?
+  exampleHighlight String?
+  exampleJa        String?
+  etymology        String?
+  mnemonic         String?
+  rootImage        String?
+  explanation      String?
+  // Child collections embedded as JSON for SQLite/Postgres compatibility.
+  // definitions:  { pos: string, items: string[] }[]
+  // phrases:      { en: string, ja: string }[]
+  // relatedWords: { word: string, pos?: string }[]
+  // otherPos:     { pos: string, meaning: string }[]
+  // confusables:  { word: string, meaning: string, why: string }[]
+  definitions   Json?
+  phrases       Json?
+  relatedWords  Json?
+  otherPos      Json?
+  confusables   Json?
+  flagged       Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  deck       Deck           @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  reviewLogs ReviewLog[]
+  srsStates  CardSrsState[]
+  memos      Memo[]
+
+  @@index([deckId])
+  @@index([word])
+}
+
+// ===========================================================================
+// SRS (SM-2)
+// ===========================================================================
+
+model CardSrsState {
+  cardId       String
+  userId       String
+  easeFactor   Float    @default(2.5)
+  intervalDays Int      @default(0)
+  repetitions  Int      @default(0)
+  reviewsTotal Int      @default(0)
+  nextReviewAt DateTime @default(now())
+  mastery      Int      @default(1) // 1..5
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@id([userId, cardId])
+  @@index([userId, nextReviewAt])
+}
+
+model ReviewLog {
+  id            String   @id @default(cuid())
+  userId        String
+  cardId        String
+  mode          String // 'flashcard' | 'quiz'
+  rating        Int // 0..5 (SM-2)
+  correct       Boolean
+  masteryBefore Int
+  masteryAfter  Int
+  reviewedAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([userId, reviewedAt])
+  @@index([cardId])
+}
+
+// ===========================================================================
+// Memo
+// ===========================================================================
+
+model Memo {
+  id        String   @id @default(cuid())
+  userId    String
+  cardId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card Card @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cardId])
+}
+
+// ===========================================================================
+// Public Decks
+// ===========================================================================
+
+model PublicDeck {
+  id          String   @id @default(cuid())
+  name        String
+  author      String
+  totalCards  Int
+  downloads   Int      @default(0)
+  rating      Float    @default(0)
+  category    String // '英語' | '資格' | 'ビジネス' | 'IT' | '医学' | '法学'
+  description String?
+  // cards: full card payload as JSON array (Phase 1: import = clone into Card)
+  cards       Json
+  createdAt   DateTime @default(now())
+
+  @@index([category])
+}
+
+// ===========================================================================
+// Imported Content (Phase 1: schema only, real ingestion in Phase 2)
+// ===========================================================================
+
+model ImportedContent {
+  id              String   @id @default(cuid())
+  userId          String
+  sourceType      String // 'pdf' | 'podcast' | 'youtube'
+  sourceUrl       String?
+  title           String?
+  durationSeconds Int?
+  // transcript: { time: number, en: string, ja: string }[]
+  transcript      Json
+  createdAt       DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importedWords ImportedWord[]
+}
+
+model ImportedWord {
+  id                String   @id @default(cuid())
+  importedContentId String
+  word              String
+  sourceLineIndex   Int
+  cardId            String?
+  createdAt         DateTime @default(now())
+
+  importedContent ImportedContent @relation(fields: [importedContentId], references: [id], onDelete: Cascade)
+
+  @@unique([importedContentId, word, sourceLineIndex])
+}

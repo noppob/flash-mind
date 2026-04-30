@@ -1,81 +1,118 @@
 "use client"
 
-import { useState } from "react"
-import { X, CheckCircle2, XCircle } from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
+import { X, CheckCircle2, XCircle, Loader2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
+import { getDueCards } from "@/lib/api/decks"
+import { submitReviews } from "@/lib/api/reviews"
+import type { CardDetail, ReviewItem, ReviewResult } from "@/lib/api/types"
 
-const quizQuestions = [
-  {
-    id: "1",
-    word: "unprecedented",
-    correctAnswer: "前例のない",
-    options: ["前例のない", "包括的な", "曖昧な", "かなりの"],
-  },
-  {
-    id: "2",
-    word: "comprehensive",
-    correctAnswer: "包括的な",
-    options: ["悪化する", "包括的な", "実装する", "深い"],
-  },
-  {
-    id: "3",
-    word: "deteriorate",
-    correctAnswer: "悪化する",
-    options: ["取得する", "前例のない", "悪化する", "かなりの"],
-  },
-  {
-    id: "4",
-    word: "substantial",
-    correctAnswer: "かなりの",
-    options: ["曖昧な", "かなりの", "包括的な", "実装する"],
-  },
-  {
-    id: "5",
-    word: "ambiguous",
-    correctAnswer: "曖昧な",
-    options: ["深い", "取得する", "前例のない", "曖昧な"],
-  },
-]
+const QUIZ_LIMIT = 5
+
+type Question = {
+  cardId: string
+  word: string
+  correctAnswer: string
+  options: string[]
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr]
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[copy[i], copy[j]] = [copy[j], copy[i]]
+  }
+  return copy
+}
+
+function buildQuestions(cards: CardDetail[]): Question[] {
+  const pool = shuffle(cards).slice(0, QUIZ_LIMIT)
+  const allMeanings = [...new Set(cards.map((c) => c.meaning))]
+  return pool.map((card) => {
+    const distractors = shuffle(allMeanings.filter((m) => m !== card.meaning)).slice(0, 3)
+    const options = shuffle([card.meaning, ...distractors])
+    return {
+      cardId: card.id,
+      word: card.word,
+      correctAnswer: card.meaning,
+      options,
+    }
+  })
+}
 
 export function QuizScreen({
+  deckId,
   onClose,
   onComplete,
 }: {
+  deckId: string
   onClose: () => void
-  onComplete: () => void
+  onComplete: (result: ReviewResult) => void
 }) {
+  const [cards, setCards] = useState<CardDetail[]>([])
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null)
   const [correctCount, setCorrectCount] = useState(0)
   const [showFeedback, setShowFeedback] = useState(false)
+  const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
 
-  const question = quizQuestions[currentIndex]
-  const progress = ((currentIndex) / quizQuestions.length) * 100
-  const isCorrect = selectedAnswer === question.correctAnswer
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    getDueCards(deckId, 30)
+      .then((c) => !cancelled && setCards(c))
+      .catch((e) => console.error(e))
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [deckId])
+
+  const questions = useMemo(() => buildQuestions(cards), [cards])
+
+  const question = questions[currentIndex]
+  const progress = questions.length > 0 ? (currentIndex / questions.length) * 100 : 0
+  const isCorrect = question && selectedAnswer === question.correctAnswer
 
   const handleAnswer = (answer: string) => {
-    if (showFeedback) return
+    if (showFeedback || !question) return
+    const correct = answer === question.correctAnswer
     setSelectedAnswer(answer)
     setShowFeedback(true)
-
-    if (answer === question.correctAnswer) {
-      setCorrectCount((prev) => prev + 1)
-    }
+    if (correct) setCorrectCount((c) => c + 1)
+    setReviewItems((prev) => [
+      ...prev,
+      {
+        cardId: question.cardId,
+        mode: "quiz",
+        rating: correct ? 5 : 2,
+        correct,
+      },
+    ])
   }
 
-  const handleNext = () => {
+  const handleNext = async () => {
     setSelectedAnswer(null)
     setShowFeedback(false)
 
-    if (currentIndex < quizQuestions.length - 1) {
+    if (currentIndex < questions.length - 1) {
       setCurrentIndex((prev) => prev + 1)
     } else {
-      onComplete()
+      setSubmitting(true)
+      try {
+        const result = await submitReviews(reviewItems)
+        onComplete(result)
+      } catch (e) {
+        console.error(e)
+        setSubmitting(false)
+      }
     }
   }
 
   const getOptionStyle = (option: string) => {
-    if (!showFeedback) {
+    if (!showFeedback || !question) {
       return "bg-card border-border text-foreground"
     }
     if (option === question.correctAnswer) {
@@ -87,12 +124,38 @@ export function QuizScreen({
     return "bg-card border-border text-muted-foreground opacity-50"
   }
 
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (questions.length === 0) {
+    return (
+      <div className="h-full flex flex-col">
+        <div className="pt-14 px-4 pb-3">
+          <button onClick={onClose} className="flex items-center gap-0.5 text-primary">
+            <X className="w-5 h-5" />
+            <span className="text-sm font-medium">閉じる</span>
+          </button>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+          クイズを生成できませんでした
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* Header */}
       <div className="pt-14 px-4 pb-3">
         <div className="flex items-center justify-between mb-3">
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center"
+          >
             <X className="w-4 h-4 text-foreground" />
           </button>
           <div className="flex items-center gap-3">
@@ -101,7 +164,7 @@ export function QuizScreen({
               <span className="font-medium text-foreground">{correctCount}</span>
             </div>
             <span className="text-sm text-muted-foreground">
-              {currentIndex + 1} / {quizQuestions.length}
+              {currentIndex + 1} / {questions.length}
             </span>
           </div>
           <div className="w-8" />
@@ -109,14 +172,14 @@ export function QuizScreen({
         <Progress value={progress} className="h-1.5" />
       </div>
 
-      {/* Question */}
       <div className="flex-1 flex flex-col px-5 pb-4">
         <div className="flex-1 flex flex-col items-center justify-center mb-6">
-          <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">この単語の意味は？</p>
+          <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wider">
+            この単語の意味は？
+          </p>
           <h2 className="text-4xl font-bold text-foreground text-center">{question.word}</h2>
         </div>
 
-        {/* Options */}
         <div className="flex flex-col gap-3 mb-4">
           {question.options.map((option, index) => (
             <button
@@ -133,15 +196,17 @@ export function QuizScreen({
                 {showFeedback && option === question.correctAnswer && (
                   <CheckCircle2 className="w-5 h-5 text-emerald-500 ml-auto" />
                 )}
-                {showFeedback && option === selectedAnswer && !isCorrect && option !== question.correctAnswer && (
-                  <XCircle className="w-5 h-5 text-red-500 ml-auto" />
-                )}
+                {showFeedback &&
+                  option === selectedAnswer &&
+                  !isCorrect &&
+                  option !== question.correctAnswer && (
+                    <XCircle className="w-5 h-5 text-red-500 ml-auto" />
+                  )}
               </div>
             </button>
           ))}
         </div>
 
-        {/* Feedback & Next */}
         {showFeedback && (
           <div className="animate-slide-up">
             <div className={`rounded-2xl p-4 mb-3 ${isCorrect ? "bg-emerald-50" : "bg-red-50"}`}>
@@ -151,21 +216,23 @@ export function QuizScreen({
                 ) : (
                   <XCircle className="w-5 h-5 text-red-500" />
                 )}
-                <span className={`font-semibold ${isCorrect ? "text-emerald-700" : "text-red-700"}`}>
+                <span
+                  className={`font-semibold ${isCorrect ? "text-emerald-700" : "text-red-700"}`}
+                >
                   {isCorrect ? "正解！" : "不正解"}
                 </span>
               </div>
               {!isCorrect && (
-                <p className="text-sm text-red-600 ml-7">
-                  正解: {question.correctAnswer}
-                </p>
+                <p className="text-sm text-red-600 ml-7">正解: {question.correctAnswer}</p>
               )}
             </div>
             <button
               onClick={handleNext}
-              className="w-full bg-primary text-primary-foreground rounded-2xl py-4 font-semibold active:scale-[0.98] transition-transform"
+              disabled={submitting}
+              className="w-full bg-primary text-primary-foreground rounded-2xl py-4 font-semibold active:scale-[0.98] transition-transform flex items-center justify-center gap-2 disabled:opacity-60"
             >
-              {currentIndex < quizQuestions.length - 1 ? "次の問題" : "結果を見る"}
+              {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
+              {currentIndex < questions.length - 1 ? "次の問題" : "結果を見る"}
             </button>
           </div>
         )}

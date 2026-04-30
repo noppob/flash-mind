@@ -20,6 +20,10 @@ next-env.d.ts.bak
 .env.local
 .env*.local
 
+# Prisma local SQLite (dev only)
+prisma/dev.db
+prisma/dev.db-journal
+
 # Logs
 *.log
 npm-debug.log*

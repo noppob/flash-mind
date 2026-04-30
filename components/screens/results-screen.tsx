@@ -1,20 +1,22 @@
 "use client"
 
 import { Trophy, Target, Brain, Flag, RotateCcw, Home } from "lucide-react"
+import type { ReviewResult } from "@/lib/api/types"
 
 export function ResultsScreen({
+  result,
   onRetry,
   onHome,
 }: {
+  result: ReviewResult | null
   onRetry: () => void
   onHome: () => void
 }) {
-  const totalCards = 5
-  const correct = 4
-  const accuracy = Math.round((correct / totalCards) * 100)
-  const weakCards = [
-    { word: "deteriorate", meaning: "悪化する" },
-  ]
+  const totalCards = result?.totalCards ?? 0
+  const correct = result?.correct ?? 0
+  const accuracy = result?.accuracy ?? 0
+  const masteryChanges = result?.masteryChanges ?? []
+  const weakCards = result?.weakCards ?? []
 
   return (
     <div className="h-full flex flex-col bg-background">
@@ -27,7 +29,6 @@ export function ResultsScreen({
         <p className="text-sm text-muted-foreground">お疲れさまでした</p>
       </div>
 
-      {/* Stats */}
       <div className="flex-1 overflow-y-auto px-5 pb-4">
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-card rounded-2xl border border-border p-4 text-center">
@@ -47,54 +48,48 @@ export function ResultsScreen({
           </div>
         </div>
 
-        {/* Mastery changes */}
-        <div className="bg-card rounded-2xl border border-border p-4 mb-4">
-          <h3 className="font-semibold text-foreground mb-3">習熟度の変化</h3>
-          <div className="flex flex-col gap-3">
-            {[
-              { word: "unprecedented", from: 3, to: 4 },
-              { word: "comprehensive", from: 3, to: 4 },
-              { word: "deteriorate", from: 1, to: 1 },
-              { word: "substantial", from: 4, to: 5 },
-              { word: "ambiguous", from: 2, to: 3 },
-            ].map((item) => (
-              <div key={item.word} className="flex items-center justify-between">
-                <span className="text-sm text-foreground font-medium">{item.word}</span>
-                <div className="flex items-center gap-2">
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((level) => (
-                      <div
-                        key={`from-${level}`}
-                        className={`w-1.5 h-3 rounded-full ${
-                          level <= item.from ? "bg-muted-foreground/30" : "bg-muted"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-muted-foreground">{">"}</span>
-                  <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((level) => (
-                      <div
-                        key={`to-${level}`}
-                        className={`w-1.5 h-3 rounded-full ${
-                          level <= item.to
-                            ? item.to >= 4
-                              ? "bg-emerald-500"
-                              : item.to >= 3
-                              ? "bg-amber-500"
-                              : "bg-red-500"
-                            : "bg-muted"
-                        }`}
-                      />
-                    ))}
+        {masteryChanges.length > 0 && (
+          <div className="bg-card rounded-2xl border border-border p-4 mb-4">
+            <h3 className="font-semibold text-foreground mb-3">習熟度の変化</h3>
+            <div className="flex flex-col gap-3">
+              {masteryChanges.map((item) => (
+                <div key={item.cardId} className="flex items-center justify-between">
+                  <span className="text-sm text-foreground font-medium">{item.word}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <div
+                          key={`from-${level}`}
+                          className={`w-1.5 h-3 rounded-full ${
+                            level <= item.from ? "bg-muted-foreground/30" : "bg-muted"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-xs text-muted-foreground">{">"}</span>
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3, 4, 5].map((level) => (
+                        <div
+                          key={`to-${level}`}
+                          className={`w-1.5 h-3 rounded-full ${
+                            level <= item.to
+                              ? item.to >= 4
+                                ? "bg-emerald-500"
+                                : item.to >= 3
+                                ? "bg-amber-500"
+                                : "bg-red-500"
+                              : "bg-muted"
+                          }`}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Weak cards */}
         {weakCards.length > 0 && (
           <div className="bg-destructive/5 rounded-2xl border border-destructive/20 p-4 mb-6">
             <h3 className="font-semibold text-foreground mb-2 flex items-center gap-2">
@@ -102,15 +97,14 @@ export function ResultsScreen({
               苦手カード
             </h3>
             {weakCards.map((card) => (
-              <div key={card.word} className="flex items-center justify-between py-1">
+              <div key={card.cardId} className="flex items-center justify-between py-1">
                 <span className="text-sm font-medium text-foreground">{card.word}</span>
-                <span className="text-sm text-muted-foreground">{card.meaning}</span>
+                <span className="text-sm text-muted-foreground">習熟度 {card.mastery}/5</span>
               </div>
             ))}
           </div>
         )}
 
-        {/* Action buttons */}
         <div className="flex gap-3">
           <button
             onClick={onRetry}
