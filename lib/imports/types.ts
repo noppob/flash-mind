@@ -12,3 +12,13 @@ export type ImportResult = {
   durationSeconds: number | null
   transcript: TranscriptLine[]
 }
+
+export type ImportJobStatus = {
+  jobId: string
+  status: "pending" | "running" | "done" | "error"
+  progress: number // 0..100
+  currentStep: "fetching" | "transcribing" | "translating" | "persisting" | null
+  errorCode?: string
+  errorMessage?: string
+  result?: ImportResult
+}

@@ -1,16 +1,19 @@
 import { api, apiFetch } from "./client"
-import type { ImportResult } from "@/lib/imports/types"
+import type { ImportJobStatus } from "@/lib/imports/types"
 
-export const importFromUrl = (
-  type: "youtube" | "podcast",
-  url: string,
-) => api.post<ImportResult>("/api/imports", { type, url })
+export type ImportSourceType = "youtube" | "podcast"
 
-export const importPdf = (file: File) => {
+export const createImportFromUrl = (type: ImportSourceType, url: string) =>
+  api.post<{ jobId: string }>("/api/imports", { type, url })
+
+export const createImportFromPdf = (file: File) => {
   const form = new FormData()
   form.append("file", file)
-  return apiFetch<ImportResult>("/api/imports", {
+  return apiFetch<{ jobId: string }>("/api/imports", {
     method: "POST",
     body: form,
   })
 }
+
+export const getImportJob = (jobId: string) =>
+  api.get<ImportJobStatus>(`/api/imports/${encodeURIComponent(jobId)}`)
