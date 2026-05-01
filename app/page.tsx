@@ -16,6 +16,7 @@ import { StatsScreen } from "@/components/screens/stats-screen"
 import { SettingsScreen } from "@/components/screens/settings-screen"
 import { CardEditScreen } from "@/components/screens/card-edit-screen"
 import { CardListScreen } from "@/components/screens/card-list-screen"
+import { DictionaryScreen } from "@/components/screens/dictionary-screen"
 import { LoginScreen } from "@/components/screens/login-screen"
 import type { ReviewResult } from "@/lib/api/types"
 
@@ -31,6 +32,7 @@ type Screen =
   | "settings"
   | "card-edit"
   | "card-list"
+  | "dictionary"
 
 type TabId = "home" | "explore" | "import" | "stats" | "settings"
 
@@ -45,6 +47,8 @@ export default function Page() {
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null)
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null)
   const [resultData, setResultData] = useState<ReviewResult | null>(null)
+  // 辞書から「カード化」したときに card-edit に渡す単語
+  const [pendingInitialWord, setPendingInitialWord] = useState<string | null>(null)
 
   const navigate = useCallback(
     (to: Screen) => {
@@ -74,6 +78,17 @@ export default function Page() {
   const handleCardEdit = useCallback(
     (cardId: string | null) => {
       setSelectedCardId(cardId)
+      setPendingInitialWord(null)
+      navigate("card-edit")
+    },
+    [navigate],
+  )
+
+  const handleCreateCardFromDictionary = useCallback(
+    (deckId: string, word: string) => {
+      setSelectedDeckId(deckId)
+      setSelectedCardId(null)
+      setPendingInitialWord(word)
       navigate("card-edit")
     },
     [navigate],
@@ -110,7 +125,12 @@ export default function Page() {
   const renderScreen = () => {
     switch (screen) {
       case "home":
-        return <HomeScreen onDeckSelect={handleDeckSelect} />
+        return (
+          <HomeScreen
+            onDeckSelect={handleDeckSelect}
+            onOpenDictionary={() => navigate("dictionary")}
+          />
+        )
       case "deck-detail":
         if (!selectedDeckId) return <HomeScreen onDeckSelect={handleDeckSelect} />
         return (
@@ -173,7 +193,11 @@ export default function Page() {
           <CardEditScreen
             deckId={selectedDeckId}
             cardId={selectedCardId}
-            onBack={goBack}
+            initialWord={pendingInitialWord ?? undefined}
+            onBack={() => {
+              setPendingInitialWord(null)
+              goBack()
+            }}
           />
         )
       case "card-list":
@@ -183,6 +207,13 @@ export default function Page() {
             deckId={selectedDeckId}
             onBack={() => setScreen("deck-detail")}
             onCardEdit={handleCardEdit}
+          />
+        )
+      case "dictionary":
+        return (
+          <DictionaryScreen
+            onBack={goBack}
+            onCreateCard={handleCreateCardFromDictionary}
           />
         )
       default:

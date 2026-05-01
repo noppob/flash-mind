@@ -8,8 +8,11 @@ export type AiGenerateInput = {
 export const generateAi = (input: AiGenerateInput) =>
   api.post<AiGenerateResult>("/api/ai/generate", input)
 
+export type LookupWordResult = {
+  word: string
+  meaning: string
+  source?: "dictionary" | "ai+dictionary" | "ai"
+}
+
 export const lookupWord = (word: string, sentence?: string) =>
-  api.post<{ word: string; meaning: string }>("/api/ai/lookup", {
-    word,
-    sentence,
-  })
+  api.post<LookupWordResult>("/api/ai/lookup", { word, sentence })

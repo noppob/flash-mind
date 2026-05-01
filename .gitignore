@@ -26,6 +26,10 @@ prisma/dev.db-journal
 prisma/sqlite/dev.db
 prisma/sqlite/dev.db-journal
 
+# 商用辞書原本（再配布禁止・seed 入力としてローカルからのみ参照）
+EIJIRO*.TXT
+EIJIRO*.txt
+
 # Logs
 *.log
 npm-debug.log*

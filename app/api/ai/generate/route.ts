@@ -1,6 +1,8 @@
 import { withUser, jsonError } from "@/lib/auth-helpers"
 import { AiGenerateSchema, AiGenerateResultSchema } from "@/lib/validation/ai"
 import { getOpenAI, AI_MODEL } from "@/lib/openai"
+import { lookupForGrounding } from "@/lib/dictionary/lookup"
+import { formatHitsForPrompt } from "@/lib/dictionary/format"
 
 const SYSTEM_PROMPT = `あなたは英単語学習アプリ向けに、与えられた英単語のカード情報を生成するアシスタントです。
 出力は必ず以下の 4 フィールドを持つ JSON オブジェクトで、各値は日本語の平文（Markdown・箇条書き・前置き・引用符は禁止）。
@@ -11,6 +13,12 @@ const SYSTEM_PROMPT = `あなたは英単語学習アプリ向けに、与えら
 - "explanation": 品詞・ニュアンス・典型的な使われ方を 100〜150 字、2〜3 文で。
 
 JSON 以外のテキスト（コードブロック・コメント・前置き）は一切出力しないこと。`
+
+const GROUNDING_INSTRUCTIONS = `次の「辞書ヒット (英辞郎)」が与えられたときのみ適用するルール:
+- "meaning" は辞書の definition を最も主要な訳に絞り 1〜2 行に再構成。辞書にない訳語を勝手に作らない。
+- 複数品詞・複数義がある場合は中心義を優先し、必要に応じ「〜（動詞）／〜（名詞）」併記。
+- "example" / "etymology" / "explanation" も definition と矛盾しないこと。語源は確実な部分のみ、不明なら「語源は要確認」。
+- definition に "<→other>" 参照がある場合、参照先を直接訳に採用せず "explanation" で軽く触れる程度に留める。`
 
 export async function POST(req: Request) {
   return withUser(async () => {
@@ -32,16 +40,30 @@ export async function POST(req: Request) {
       )
     }
 
+    const hits = await lookupForGrounding(word).catch((e) => {
+      console.warn("[ai/generate] dictionary lookup failed", e)
+      return []
+    })
+    console.log(`[ai/generate] dict hits=${hits.length} word="${word}"`)
+
+    type ChatMessage = { role: "system" | "user"; content: string }
+    const messages: ChatMessage[] = [{ role: "system", content: SYSTEM_PROMPT }]
+    if (hits.length > 0) {
+      messages.push({ role: "system", content: GROUNDING_INSTRUCTIONS })
+      messages.push({
+        role: "user",
+        content: `辞書ヒット (英辞郎):\n${formatHitsForPrompt(hits)}`,
+      })
+    }
+    messages.push({ role: "user", content: `単語: ${word}` })
+
     let text: string
     try {
       const response = await client.chat.completions.create({
         model: AI_MODEL,
         max_tokens: 600,
         response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `単語: ${word}` },
-        ],
+        messages,
       })
       text = response.choices[0]?.message?.content?.trim() ?? ""
     } catch (e) {

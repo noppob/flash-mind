@@ -268,3 +268,23 @@ model ImportedWord {
 
   @@unique([importedContentId, word, sourceLineIndex])
 }
+
+// ===========================================================================
+// Dictionary (英辞郎 144-10)
+// 静的な辞書データ。ユーザに紐付かず、AI 生成の grounding と将来の検索に利用。
+// 商用辞書のため原本は git に入れない。seed: scripts/seed-eijiro.ts
+// ===========================================================================
+
+model DictionaryEntry {
+  id            Int     @id @default(autoincrement())
+  headword      String
+  headwordLower String
+  pos           String?
+  definition    String
+  note          String?
+  aliasOf       String?
+  raw           String
+
+  @@index([headwordLower])
+  @@index([headword])
+}

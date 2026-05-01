@@ -1,13 +1,19 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { BookOpen, Flame, ChevronRight, Sparkles, Clock, Flag, Loader2 } from "lucide-react"
+import { BookOpen, Flame, Sparkles, Clock, Flag, Loader2, Search } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { listDecks } from "@/lib/api/decks"
 import { getStatsOverview } from "@/lib/api/stats"
 import type { DeckSummary, StatsOverview } from "@/lib/api/types"
 
-export function HomeScreen({ onDeckSelect }: { onDeckSelect: (deckId: string) => void }) {
+export function HomeScreen({
+  onDeckSelect,
+  onOpenDictionary,
+}: {
+  onDeckSelect: (deckId: string) => void
+  onOpenDictionary?: () => void
+}) {
   const [decks, setDecks] = useState<DeckSummary[]>([])
   const [stats, setStats] = useState<StatsOverview | null>(null)
   const [loading, setLoading] = useState(true)
@@ -95,24 +101,38 @@ export function HomeScreen({ onDeckSelect }: { onDeckSelect: (deckId: string) =>
           </div>
         </div>
 
-        {/* Quick Review Button */}
-        {decks.length > 0 && (
-          <div className="px-5 mb-5">
+        {/* Quick Actions */}
+        <div className="px-5 mb-5 grid grid-cols-2 gap-3">
+          {decks.length > 0 ? (
             <button
-              className="w-full flex items-center gap-3 bg-card rounded-2xl p-4 border border-border active:scale-[0.98] transition-transform"
+              className="flex flex-col items-start gap-2 bg-card rounded-2xl p-3 border border-border active:scale-[0.98] transition-transform text-left"
               onClick={() => onDeckSelect(decks[0].id)}
             >
-              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                <Sparkles className="w-6 h-6 text-primary" />
+              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-primary" />
               </div>
-              <div className="flex-1 text-left">
-                <p className="font-semibold text-foreground">AI おすすめ復習</p>
-                <p className="text-sm text-muted-foreground">SRSに基づく最適な{totalDueToday}枚</p>
+              <div>
+                <p className="font-semibold text-foreground text-sm">AI推薦復習</p>
+                <p className="text-xs text-muted-foreground">最適な{totalDueToday}枚</p>
               </div>
-              <ChevronRight className="w-5 h-5 text-muted-foreground" />
             </button>
-          </div>
-        )}
+          ) : (
+            <div />
+          )}
+          <button
+            className="flex flex-col items-start gap-2 bg-card rounded-2xl p-3 border border-border active:scale-[0.98] transition-transform text-left disabled:opacity-50"
+            onClick={onOpenDictionary}
+            disabled={!onOpenDictionary}
+          >
+            <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Search className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <p className="font-semibold text-foreground text-sm">辞書を引く</p>
+              <p className="text-xs text-muted-foreground">英辞郎で検索</p>
+            </div>
+          </button>
+        </div>
 
         {/* Decks */}
         <div className="px-5">

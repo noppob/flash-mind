@@ -18,11 +18,13 @@ import {
   Sparkles,
   Link2,
   ChevronRight,
+  ChevronDown,
   Plus,
   Search,
   X,
   Check,
   Loader2,
+  Lightbulb,
 } from "lucide-react"
 import { listDecks } from "@/lib/api/decks"
 import { createCards } from "@/lib/api/cards"
@@ -32,8 +34,10 @@ import {
   getImportJob,
 } from "@/lib/api/imports"
 import { lookupWord } from "@/lib/api/ai"
+import { extractUnknownWords } from "@/lib/api/dictionary"
 import type { ImportJobStatus, ImportResult } from "@/lib/imports/types"
 import type { DeckSummary } from "@/lib/api/types"
+import type { ExtractedWord } from "@/lib/validation/dictionary"
 
 const sources = [
   { id: "pdf" as const, name: "PDF", icon: FileText, color: "bg-emerald-500", inputType: "file" as const },
@@ -80,6 +84,7 @@ export function ImportScreen() {
   const [popover, setPopover] = useState<PopoverState | null>(null)
   const [meaningPreview, setMeaningPreview] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const [showRegister, setShowRegister] = useState(false)
@@ -88,6 +93,15 @@ export function ImportScreen() {
   const [newDeckName, setNewDeckName] = useState("")
   const [registering, setRegistering] = useState(false)
   const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
+
+  // 未登録英単語の抽出結果。書き起こし完了後に取得
+  const [extractedWords, setExtractedWords] = useState<ExtractedWord[]>([])
+  const [extractStats, setExtractStats] = useState<{
+    unique: number
+    known: number
+  } | null>(null)
+  const [extractLoading, setExtractLoading] = useState(false)
+  const [extractOpen, setExtractOpen] = useState(false)
 
   const playInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -104,14 +118,21 @@ export function ImportScreen() {
   const selected = sources.find((s) => s.id === selectedSource)
 
   /* ─── Close popover on outside tap ─── */
+  // React onClick stopPropagation does not stop native bubbling, so a click on
+  // a button inside the popover would still reach a document listener. Use a
+  // ref-based containment check instead.
   useEffect(() => {
     if (!popover) return
-    const handler = () => {
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current?.contains(e.target as Node)) return
       setPopover(null)
       setMeaningPreview(null)
     }
-    const t = setTimeout(() => document.addEventListener("click", handler, { once: true }), 50)
-    return () => clearTimeout(t)
+    const t = setTimeout(() => document.addEventListener("click", handler), 50)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener("click", handler)
+    }
   }, [popover])
 
   /* ─── Playback simulation (PDF lines have synthetic time = index) ─── */
@@ -161,6 +182,9 @@ export function ImportScreen() {
     setJobId(null)
     setJobProgress(0)
     setJobStep(null)
+    setExtractedWords([])
+    setExtractStats(null)
+    setExtractOpen(false)
   }
 
   const handleAnalyze = useCallback(async () => {
@@ -244,8 +268,71 @@ export function ImportScreen() {
     }
   }, [jobId])
 
+  // 書き起こし完了後に未登録語を抽出。importResult が変わるたびに 1 回。
+  useEffect(() => {
+    if (!importResult || transcript.length === 0) {
+      setExtractedWords([])
+      setExtractStats(null)
+      return
+    }
+    const text = transcript.map((t) => t.en).join("\n")
+    if (!text.trim()) return
+    let cancelled = false
+    setExtractLoading(true)
+    extractUnknownWords({ text, limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        setExtractedWords(res.unknownWords)
+        setExtractStats({
+          unique: res.totalUniqueTokens,
+          known: res.totalRegisteredCards,
+        })
+        // 30 件以下なら自動展開、多いときは畳んで集中力を保つ
+        setExtractOpen(res.unknownWords.length > 0 && res.unknownWords.length <= 30)
+      })
+      .catch((e) => {
+        if (!cancelled) console.error("[extract-words]", e)
+      })
+      .finally(() => {
+        if (!cancelled) setExtractLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [importResult, transcript])
+
   const isRegistered = (word: string, lineIndex: number) =>
     registeredWords.some((w) => w.word === word && w.sourceIndex === lineIndex)
+
+  const isWordRegistered = (word: string) =>
+    registeredWords.some((w) => w.word === word.toLowerCase())
+
+  const findFirstLineIndex = useCallback(
+    (word: string): number => {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const re = new RegExp(`\\b${escaped}\\b`, "i")
+      for (let i = 0; i < transcript.length; i++) {
+        if (re.test(transcript[i].en)) return i
+      }
+      return 0
+    },
+    [transcript],
+  )
+
+  const toggleExtractedWord = useCallback(
+    (word: string) => {
+      const lc = word.toLowerCase()
+      // 既に何らかの行で登録済みなら、登録済みの全行を外す
+      const existing = registeredWords.filter((w) => w.word === lc)
+      if (existing.length > 0) {
+        setRegisteredWords((prev) => prev.filter((w) => w.word !== lc))
+        return
+      }
+      const lineIdx = findFirstLineIndex(word)
+      setRegisteredWords((prev) => [...prev, { word: lc, sourceIndex: lineIdx }])
+    },
+    [registeredWords, findFirstLineIndex],
+  )
 
   const handleWordTap = useCallback(
     (e: React.MouseEvent | React.TouchEvent, word: string, lineIndex: number) => {
@@ -567,6 +654,94 @@ export function ImportScreen() {
         )}
       </div>
 
+      {/* Extracted unknown words panel */}
+      {(extractLoading || extractedWords.length > 0) && (
+        <div className="px-4 pb-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setExtractOpen((v) => !v)}
+            className="w-full flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 active:opacity-80"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-xs text-foreground truncate">
+                {extractLoading ? (
+                  <span className="text-muted-foreground">未登録語を抽出中…</span>
+                ) : (
+                  <>
+                    <span className="font-bold text-amber-700">
+                      {extractedWords.length}
+                    </span>
+                    <span className="ml-1">
+                      語の未登録英単語が見つかりました
+                    </span>
+                    {extractStats && (
+                      <span className="ml-1 text-muted-foreground">
+                        （登録済 {extractStats.known}）
+                      </span>
+                    )}
+                  </>
+                )}
+              </span>
+            </div>
+            {!extractLoading && extractedWords.length > 0 && (
+              <ChevronDown
+                className={`w-4 h-4 text-amber-700 shrink-0 transition-transform ${
+                  extractOpen ? "rotate-180" : ""
+                }`}
+              />
+            )}
+          </button>
+          {extractOpen && extractedWords.length > 0 && (
+            <div className="mt-2 max-h-48 overflow-y-auto space-y-1 pr-1">
+              {extractedWords.map((ew) => {
+                const registered = isWordRegistered(ew.word)
+                return (
+                  <div
+                    key={ew.word}
+                    className="flex items-start gap-2 bg-card border border-border rounded-lg px-2.5 py-1.5"
+                  >
+                    <button
+                      onClick={() => toggleExtractedWord(ew.word)}
+                      className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                        registered
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:bg-secondary/70"
+                      }`}
+                      aria-label={registered ? "選択解除" : "選択"}
+                    >
+                      {registered ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <Plus className="w-3 h-3" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {ew.word}
+                        </span>
+                        {ew.pos && (
+                          <span className="text-[9px] text-muted-foreground bg-secondary px-1 py-0.5 rounded">
+                            {ew.pos}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                          ×{ew.count}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-1">
+                        {ew.definition}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Transcript lines */}
       <div
         ref={scrollRef}
@@ -607,13 +782,13 @@ export function ImportScreen() {
       {/* ─── Inline Popover ─── */}
       {popover && (
         <div
+          ref={popoverRef}
           className="absolute z-50"
           style={{
             left: `${Math.max(80, Math.min(popover.x, (containerRef.current?.clientWidth ?? 300) - 80))}px`,
             top: `${popover.y - 8}px`,
             transform: "translate(-50%, -100%)",
           }}
-          onClick={(e) => e.stopPropagation()}
         >
           {meaningPreview && (
             <div className="mb-1.5 bg-card border border-border rounded-xl px-3 py-2 shadow-lg min-w-[160px] max-w-[260px] text-center animate-slide-up">

@@ -4,15 +4,19 @@ import { useEffect, useState } from "react"
 import { ChevronLeft, Sparkles, Flag, Save, BookOpen, Loader2 } from "lucide-react"
 import { createCard, getCard, updateCard, toggleFlag } from "@/lib/api/cards"
 import { generateAi } from "@/lib/api/ai"
+import { searchDictionary } from "@/lib/api/dictionary"
 import type { CardDetail } from "@/lib/api/types"
+import type { DictionaryHit } from "@/lib/validation/dictionary"
 
 export function CardEditScreen({
   deckId,
   cardId,
+  initialWord,
   onBack,
 }: {
   deckId: string
   cardId: string | null
+  initialWord?: string
   onBack: () => void
 }) {
   const isNew = cardId === null
@@ -20,7 +24,7 @@ export function CardEditScreen({
   const [saving, setSaving] = useState(false)
   const [card, setCard] = useState<CardDetail | null>(null)
 
-  const [word, setWord] = useState("")
+  const [word, setWord] = useState(isNew ? (initialWord ?? "") : "")
   const [meaning, setMeaning] = useState("")
   const [example, setExample] = useState("")
   const [etymology, setEtymology] = useState("")
@@ -28,6 +32,40 @@ export function CardEditScreen({
   const [flagged, setFlagged] = useState(false)
 
   const [generating, setGenerating] = useState(false)
+
+  const [suggestions, setSuggestions] = useState<DictionaryHit[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+  // 直前にユーザーが候補からピックした単語。これと一致するときは候補を出さない（うるさいため）
+  const [pickedWord, setPickedWord] = useState<string | null>(null)
+
+  useEffect(() => {
+    const trimmed = word.trim()
+    if (trimmed.length < 2 || trimmed === pickedWord) {
+      setSuggestions([])
+      setSuggestionsLoading(false)
+      return
+    }
+    let cancelled = false
+    setSuggestionsLoading(true)
+    const t = setTimeout(() => {
+      searchDictionary({ q: trimmed, mode: "prefix", limit: 8, distinct: true })
+        .then((res) => {
+          if (cancelled) return
+          setSuggestions(res.hits)
+        })
+        .catch(() => {
+          if (!cancelled) setSuggestions([])
+        })
+        .finally(() => {
+          if (!cancelled) setSuggestionsLoading(false)
+        })
+    }, 220)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [word, pickedWord])
 
   useEffect(() => {
     if (isNew) return
@@ -168,16 +206,71 @@ export function CardEditScreen({
             </button>
           </div>
 
-          <div className="mb-3">
+          <div className="mb-3 relative">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
               単語
             </label>
             <input
               type="text"
               value={word}
-              onChange={(e) => setWord(e.target.value)}
+              onChange={(e) => {
+                setWord(e.target.value)
+                setPickedWord(null)
+                setShowSuggestions(true)
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() =>
+                setTimeout(() => setShowSuggestions(false), 120)
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setShowSuggestions(false)
+              }}
               className="w-full bg-card border border-border rounded-xl px-4 py-3 text-base font-medium text-foreground outline-none focus:ring-2 focus:ring-primary/30"
             />
+            {showSuggestions && suggestions.length > 0 && (
+              <div
+                role="listbox"
+                className="absolute top-full left-0 right-0 z-20 mt-1 bg-card border border-border rounded-xl shadow-lg max-h-64 overflow-y-auto"
+              >
+                {suggestions.map((s, i) => (
+                  <button
+                    key={`${s.headword}-${s.pos ?? ""}-${i}`}
+                    type="button"
+                    role="option"
+                    aria-selected={false}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      setWord(s.headword)
+                      setPickedWord(s.headword)
+                      setShowSuggestions(false)
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-accent border-b border-border last:border-b-0"
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium text-foreground">
+                        {s.headword}
+                      </span>
+                      {s.pos && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {s.pos}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground truncate">
+                      {s.definition}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+            {showSuggestions &&
+              !suggestions.length &&
+              suggestionsLoading &&
+              word.trim().length >= 2 && (
+                <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-card border border-border rounded-xl shadow-sm px-3 py-2 text-xs text-muted-foreground">
+                  検索中…
+                </div>
+              )}
           </div>
 
           <button
