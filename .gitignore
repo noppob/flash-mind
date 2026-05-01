@@ -23,6 +23,8 @@ next-env.d.ts.bak
 # Prisma local SQLite (dev only)
 prisma/dev.db
 prisma/dev.db-journal
+prisma/sqlite/dev.db
+prisma/sqlite/dev.db-journal
 
 # Logs
 *.log
