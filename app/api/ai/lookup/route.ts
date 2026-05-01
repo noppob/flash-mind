@@ -1,6 +1,6 @@
 import { z } from "zod"
 import { withUser, jsonError } from "@/lib/auth-helpers"
-import { getAnthropic, AI_MODEL } from "@/lib/anthropic"
+import { getOpenAI, AI_MODEL } from "@/lib/openai"
 
 const LookupSchema = z.object({
   word: z.string().min(1).max(120),
@@ -21,7 +21,7 @@ export async function POST(req: Request) {
 
     let client
     try {
-      client = getAnthropic()
+      client = getOpenAI()
     } catch (e) {
       return jsonError(
         503,
@@ -35,23 +35,16 @@ export async function POST(req: Request) {
       : `単語: ${word}`
 
     try {
-      const response = await client.messages.create({
+      const response = await client.chat.completions.create({
         model: AI_MODEL,
         max_tokens: 80,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPT,
-            cache_control: { type: "ephemeral" },
-          },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userMessage },
         ],
-        messages: [{ role: "user", content: userMessage }],
       })
 
-      const meaning = response.content
-        .flatMap((b) => (b.type === "text" ? [b.text] : []))
-        .join("")
-        .trim()
+      const meaning = response.choices[0]?.message?.content?.trim() ?? ""
 
       return Response.json({ word, meaning })
     } catch (e) {

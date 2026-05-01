@@ -1,6 +1,6 @@
 import { withUser, jsonError } from "@/lib/auth-helpers"
 import { AiGenerateSchema, type AiGenerateKindT } from "@/lib/validation/ai"
-import { getAnthropic, AI_MODEL } from "@/lib/anthropic"
+import { getOpenAI, AI_MODEL } from "@/lib/openai"
 
 const SYSTEM_PROMPTS: Record<AiGenerateKindT, string> = {
   meaning:
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     let client
     try {
-      client = getAnthropic()
+      client = getOpenAI()
     } catch (e) {
       return jsonError(
         503,
@@ -43,28 +43,16 @@ export async function POST(req: Request) {
     }
 
     try {
-      const response = await client.messages.create({
+      const response = await client.chat.completions.create({
         model: AI_MODEL,
         max_tokens: 400,
-        system: [
-          {
-            type: "text",
-            text: SYSTEM_PROMPTS[kind],
-            cache_control: { type: "ephemeral" },
-          },
-        ],
         messages: [
-          {
-            role: "user",
-            content: buildUserMessage(kind, word, meaning),
-          },
+          { role: "system", content: SYSTEM_PROMPTS[kind] },
+          { role: "user", content: buildUserMessage(kind, word, meaning) },
         ],
       })
 
-      const text = response.content
-        .flatMap((b) => (b.type === "text" ? [b.text] : []))
-        .join("")
-        .trim()
+      const text = response.choices[0]?.message?.content?.trim() ?? ""
 
       return Response.json({ result: text })
     } catch (e) {
