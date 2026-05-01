@@ -5,6 +5,7 @@ import { fetchYouTubeTranscript } from "./youtube"
 import { fetchPodcastTranscript } from "./podcast"
 import { translateLines } from "./translate"
 import { groupSegmentsBy10Seconds, GROUP_BUCKET_SECONDS } from "./group"
+import { progressMap } from "./progress"
 import type { TranscriptLine } from "./types"
 
 type WorkerPayload = {
@@ -38,13 +39,6 @@ async function updateJob(
   } catch (e) {
     console.error("[worker] updateJob failed", { jobId, e })
   }
-}
-
-// Linear map: scale `done/total` into [from, to] percent for monotonic progress.
-function progressMap(done: number, total: number, from: number, to: number): number {
-  if (total <= 0) return to
-  const ratio = Math.max(0, Math.min(1, done / total))
-  return Math.round(from + (to - from) * ratio)
 }
 
 export async function runImportJob({ jobId, sourceType, payload }: WorkerArgs): Promise<void> {

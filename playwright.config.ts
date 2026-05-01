@@ -5,6 +5,7 @@ const BASE_URL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/global-setup.ts",
   timeout: 30_000,
   expect: { timeout: 5_000 },
   fullyParallel: false, // a single Next.js dev server backs every test
