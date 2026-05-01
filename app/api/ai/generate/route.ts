@@ -1,26 +1,16 @@
 import { withUser, jsonError } from "@/lib/auth-helpers"
-import { AiGenerateSchema, type AiGenerateKindT } from "@/lib/validation/ai"
+import { AiGenerateSchema, AiGenerateResultSchema } from "@/lib/validation/ai"
 import { getOpenAI, AI_MODEL } from "@/lib/openai"
 
-const SYSTEM_PROMPTS: Record<AiGenerateKindT, string> = {
-  meaning:
-    "あなたは英単語の日本語訳を端的に提示するアシスタントです。与えられた英単語について、最も一般的な意味を日本語 1〜2 行でまとめて返してください。出力は意味本文のみ。Markdown・前置き・引用符は禁止。複数の品詞や意味がある場合は最も主要なものに絞り、必要であれば「〜（動詞）／〜（名詞）」のようにスラッシュで併記してください。",
-  etymology:
-    "あなたは英単語の語源を解説する辞書アシスタントです。与えられた英単語について、接頭辞・語根・接尾辞の分解と意味、由来する言語（ラテン語・ギリシャ語など）を含めて、日本語の平文 100〜150 字でまとめてください。Markdown・箇条書きは使わず、1〜2 文で簡潔に。出力は本文のみ。前置きや引用符は禁止。",
-  explanation:
-    "あなたは英単語の使い方を解説するアシスタントです。与えられた英単語と意味を踏まえ、その単語の品詞・ニュアンス・典型的な使われ方を日本語の平文 100〜150 字でまとめてください。Markdown・箇条書きは使わず、2〜3 文で。出力は本文のみ。前置きや引用符は禁止。",
-}
+const SYSTEM_PROMPT = `あなたは英単語学習アプリ向けに、与えられた英単語のカード情報を生成するアシスタントです。
+出力は必ず以下の 4 フィールドを持つ JSON オブジェクトで、各値は日本語の平文（Markdown・箇条書き・前置き・引用符は禁止）。
 
-function buildUserMessage(
-  kind: AiGenerateKindT,
-  word: string,
-  meaning?: string,
-): string {
-  if (kind === "explanation") {
-    return `単語: ${word}\n意味: ${meaning?.trim() || "(未指定)"}`
-  }
-  return `単語: ${word}`
-}
+- "meaning": 最も一般的な意味を 1〜2 行で。複数品詞や意味がある場合は最も主要なものに絞り、必要なら「〜（動詞）／〜（名詞）」のようにスラッシュで併記。
+- "example": その単語を自然に使った英文 1 文と、その日本語訳を半角スラッシュで区切る。例: "She emanates confidence in every meeting. / 彼女はどの会議でも自信を放っている。"
+- "etymology": 接頭辞・語根・接尾辞の分解と意味、由来する言語（ラテン語・ギリシャ語など）を含めて 100〜150 字、1〜2 文で簡潔に。
+- "explanation": 品詞・ニュアンス・典型的な使われ方を 100〜150 字、2〜3 文で。
+
+JSON 以外のテキスト（コードブロック・コメント・前置き）は一切出力しないこと。`
 
 export async function POST(req: Request) {
   return withUser(async () => {
@@ -29,7 +19,7 @@ export async function POST(req: Request) {
     if (!parsed.success) {
       return jsonError(422, "VALIDATION", parsed.error.message)
     }
-    const { kind, word, meaning } = parsed.data
+    const { word } = parsed.data
 
     let client
     try {
@@ -42,19 +32,18 @@ export async function POST(req: Request) {
       )
     }
 
+    let text: string
     try {
       const response = await client.chat.completions.create({
         model: AI_MODEL,
-        max_tokens: 400,
+        max_tokens: 600,
+        response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: SYSTEM_PROMPTS[kind] },
-          { role: "user", content: buildUserMessage(kind, word, meaning) },
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `単語: ${word}` },
         ],
       })
-
-      const text = response.choices[0]?.message?.content?.trim() ?? ""
-
-      return Response.json({ result: text })
+      text = response.choices[0]?.message?.content?.trim() ?? ""
     } catch (e) {
       console.error("[ai/generate]", e)
       return jsonError(
@@ -63,5 +52,19 @@ export async function POST(req: Request) {
         e instanceof Error ? e.message : "AI request failed",
       )
     }
+
+    let json: unknown
+    try {
+      json = JSON.parse(text)
+    } catch {
+      return jsonError(502, "AI_PARSE_ERROR", "AI returned invalid JSON")
+    }
+
+    const result = AiGenerateResultSchema.safeParse(json)
+    if (!result.success) {
+      return jsonError(502, "AI_PARSE_ERROR", result.error.message)
+    }
+
+    return Response.json(result.data)
   })
 }

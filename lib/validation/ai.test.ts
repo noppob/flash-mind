@@ -1,47 +1,38 @@
 import { describe, it, expect } from "vitest"
-import { AiGenerateSchema } from "./ai"
+import { AiGenerateSchema, AiGenerateResultSchema } from "./ai"
 
 describe("AiGenerateSchema", () => {
-  it("accepts each valid kind", () => {
-    for (const kind of ["meaning", "etymology", "explanation"] as const) {
-      expect(AiGenerateSchema.safeParse({ kind, word: "test" }).success).toBe(true)
-    }
-  })
-
-  it("rejects unknown kind", () => {
-    expect(
-      AiGenerateSchema.safeParse({ kind: "synonym", word: "test" }).success,
-    ).toBe(false)
+  it("accepts a valid word", () => {
+    expect(AiGenerateSchema.safeParse({ word: "ubiquitous" }).success).toBe(true)
   })
 
   it("rejects empty word", () => {
-    expect(AiGenerateSchema.safeParse({ kind: "meaning", word: "" }).success).toBe(
-      false,
-    )
+    expect(AiGenerateSchema.safeParse({ word: "" }).success).toBe(false)
   })
 
   it("rejects word longer than 120 chars", () => {
-    expect(
-      AiGenerateSchema.safeParse({ kind: "meaning", word: "x".repeat(121) }).success,
-    ).toBe(false)
+    expect(AiGenerateSchema.safeParse({ word: "x".repeat(121) }).success).toBe(false)
   })
+})
 
-  it("accepts optional meaning", () => {
+describe("AiGenerateResultSchema", () => {
+  it("accepts an object with all four fields", () => {
     expect(
-      AiGenerateSchema.safeParse({
-        kind: "etymology",
-        word: "ubiquitous",
-        meaning: "everywhere",
+      AiGenerateResultSchema.safeParse({
+        meaning: "意味",
+        example: "example sentence. / 例文",
+        etymology: "語源",
+        explanation: "解説",
       }).success,
     ).toBe(true)
   })
 
-  it("rejects meaning longer than 400 chars", () => {
+  it("rejects when a field is missing", () => {
     expect(
-      AiGenerateSchema.safeParse({
-        kind: "meaning",
-        word: "x",
-        meaning: "y".repeat(401),
+      AiGenerateResultSchema.safeParse({
+        meaning: "意味",
+        example: "例文",
+        etymology: "語源",
       }).success,
     ).toBe(false)
   })

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronLeft, Sparkles, Flag, Save, Wand2, BookOpen, Loader2 } from "lucide-react"
+import { ChevronLeft, Sparkles, Flag, Save, BookOpen, Loader2 } from "lucide-react"
 import { createCard, getCard, updateCard, toggleFlag } from "@/lib/api/cards"
 import { generateAi } from "@/lib/api/ai"
 import type { CardDetail } from "@/lib/api/types"
@@ -27,9 +27,7 @@ export function CardEditScreen({
   const [explanation, setExplanation] = useState("")
   const [flagged, setFlagged] = useState(false)
 
-  const [generatingMeaning, setGeneratingMeaning] = useState(false)
-  const [generatingEtymology, setGeneratingEtymology] = useState(false)
-  const [generatingExplanation, setGeneratingExplanation] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
     if (isNew) return
@@ -53,46 +51,19 @@ export function CardEditScreen({
     }
   }, [deckId, cardId, isNew])
 
-  const handleGenerateMeaning = async () => {
+  const handleGenerateAll = async () => {
     if (!word.trim()) return
-    setGeneratingMeaning(true)
+    setGenerating(true)
     try {
-      const { result } = await generateAi({ kind: "meaning", word: word.trim() })
-      if (result) setMeaning(result)
+      const result = await generateAi({ word: word.trim() })
+      setMeaning(result.meaning)
+      setExample(result.example)
+      setEtymology(result.etymology)
+      setExplanation(result.explanation)
     } catch (e) {
       console.error(e)
     } finally {
-      setGeneratingMeaning(false)
-    }
-  }
-
-  const handleGenerateEtymology = async () => {
-    if (!word.trim()) return
-    setGeneratingEtymology(true)
-    try {
-      const { result } = await generateAi({ kind: "etymology", word: word.trim() })
-      if (result) setEtymology(result)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setGeneratingEtymology(false)
-    }
-  }
-
-  const handleGenerateExplanation = async () => {
-    if (!word.trim()) return
-    setGeneratingExplanation(true)
-    try {
-      const { result } = await generateAi({
-        kind: "explanation",
-        word: word.trim(),
-        meaning: meaning.trim() || undefined,
-      })
-      if (result) setExplanation(result)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setGeneratingExplanation(false)
+      setGenerating(false)
     }
   }
 
@@ -197,7 +168,7 @@ export function CardEditScreen({
             </button>
           </div>
 
-          <div className="mb-4">
+          <div className="mb-3">
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
               単語
             </label>
@@ -209,22 +180,23 @@ export function CardEditScreen({
             />
           </div>
 
+          <button
+            onClick={handleGenerateAll}
+            disabled={generating || !word.trim()}
+            className="w-full flex items-center justify-center gap-2 bg-primary/10 text-primary rounded-xl py-2.5 mb-4 font-medium text-sm disabled:opacity-50"
+          >
+            {generating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
+            {generating ? "AI生成中..." : "AIで意味・例文・語源・解説を生成"}
+          </button>
+
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                意味
-              </label>
-              <button
-                onClick={handleGenerateMeaning}
-                disabled={generatingMeaning}
-                className="flex items-center gap-1 text-xs text-primary font-medium"
-              >
-                <Sparkles
-                  className={`w-3.5 h-3.5 ${generatingMeaning ? "animate-pulse-soft" : ""}`}
-                />
-                {generatingMeaning ? "生成中..." : "AI生成"}
-              </button>
-            </div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              意味
+            </label>
             <textarea
               value={meaning}
               onChange={(e) => setMeaning(e.target.value)}
@@ -246,21 +218,9 @@ export function CardEditScreen({
           </div>
 
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                語源
-              </label>
-              <button
-                onClick={handleGenerateEtymology}
-                disabled={generatingEtymology}
-                className="flex items-center gap-1 text-xs text-primary font-medium"
-              >
-                <Wand2
-                  className={`w-3.5 h-3.5 ${generatingEtymology ? "animate-pulse-soft" : ""}`}
-                />
-                {generatingEtymology ? "生成中..." : "AI語源生成"}
-              </button>
-            </div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              語源
+            </label>
             <textarea
               value={etymology}
               onChange={(e) => setEtymology(e.target.value)}
@@ -271,21 +231,9 @@ export function CardEditScreen({
           </div>
 
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                解説・メモ
-              </label>
-              <button
-                onClick={handleGenerateExplanation}
-                disabled={generatingExplanation}
-                className="flex items-center gap-1 text-xs text-primary font-medium"
-              >
-                <Sparkles
-                  className={`w-3.5 h-3.5 ${generatingExplanation ? "animate-pulse-soft" : ""}`}
-                />
-                {generatingExplanation ? "生成中..." : "AI解説生成"}
-              </button>
-            </div>
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1.5 block">
+              解説・メモ
+            </label>
             <textarea
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
