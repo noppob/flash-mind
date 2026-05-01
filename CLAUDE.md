@@ -29,7 +29,7 @@
 
 将来的な追加候補:
 - バックエンド: Supabase または Next.js Route Handlers + Prisma
-- AI: Anthropic Claude API（例文生成・解説）
+- AI: OpenAI API（gpt-4.1-mini = カード生成・辞書・翻訳、Whisper = Podcast 書き起こし）
 - iOS 化: Capacitor（既存 Web を流用）
 
 ---

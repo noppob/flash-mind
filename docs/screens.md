@@ -262,7 +262,7 @@ DL 数は `1000` 以上で `12.4k` のように k 表記に整形して表示。
 | Props | `onBack` |
 | 内部 state | `word` / `meaning` / `example` / `etymology` / `memo` / `flagged` / `generatingMeaning` / `generatingEtymology` / `generatingExplanation` |
 | 既定値 | `word="unprecedented"`、`meaning="前例のない、空前の"`、`example="an unprecedented economic crisis"`、`etymology=""`、`memo=""`、`flagged=false`（編集モード前提の値） |
-| AI 生成ボタン | 各フィールドで `setTimeout(1500)` 後に固定文字列を流し込むモック（[Claude API への置換が **TBD**](./data-model.md#10-未確定事項tbd)） |
+| AI 生成ボタン | 各フィールドで `setTimeout(1500)` 後に固定文字列を流し込むモック（OpenAI API への置換が **TBD** — 現状 [/api/ai/generate](../app/api/ai/generate/route.ts) を呼ぶ実装は完成済み、UI 配線は未） |
 | テンプレートバッジ | 「英単語拡張」固定表示 |
 | 保存 | ヘッダー右の「保存」とフッターの「カードを保存」ボタン。**保存処理は未実装** |
 

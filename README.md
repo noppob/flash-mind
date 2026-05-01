@@ -1,23 +1,24 @@
 # FlashMind
 
 AI を活用した間隔反復学習（SRS: Spaced Repetition System）型の単語帳アプリです。
-現在は Web フロントエンド（Next.js）のみ実装されています。今後バックエンドの追加と、Capacitor 等を用いた iPhone アプリ化を予定しています。
+Next.js + Prisma + PostgreSQL のフルスタック構成で、OpenAI による AI カード生成・翻訳と Whisper API による Podcast 書き起こしに対応しています。今後 Capacitor 等を用いた iPhone アプリ化を予定。
 
-> ステータス: 🚧 開発初期 — UI のみ（v0 で生成したフロントエンドを起点に開発中）。バックエンド・データ永続化・認証は未実装。
+> ステータス: ✅ Phase 2 完了 — バックエンド + 認証 + SRS + AI + 非同期コンテンツ取込。次は Vercel デプロイと App Router 移行。
 
 ---
 
-## 主な機能（UI 実装済み）
+## 主な機能
 
-- ホーム / デッキ一覧
-- デッキ詳細・カード一覧・カード編集
-- フラッシュカード学習画面
-- クイズ形式の学習画面
-- 学習結果の表示
-- 統計・設定・インポート画面
+- ホーム / デッキ一覧 / デッキ詳細
+- カード一覧・編集（AI による意味/語源/解説の自動生成 — OpenAI gpt-4.1-mini）
+- フラッシュカード学習・クイズ学習（SM-2 アルゴリズムで間隔反復）
+- 学習結果・統計・設定
+- コンテンツ取込（PDF / YouTube / Podcast）
+  - PDF: テキスト抽出 → 翻訳
+  - YouTube: 字幕取得 → 10 秒バケット化 → 翻訳
+  - Podcast: OpenAI Whisper で書き起こし → 翻訳
+  - すべて非同期ジョブ化されており、UI が進捗をポーリング表示
 - iPhone 風のシェル（`components/iphone-shell.tsx`）でラップしたモバイルファーストのレイアウト
-
-> 現状はモックデータでの表示確認のみで、学習進捗の永続化・SRS ロジック・AI 連携は未実装です。
 
 ---
 
@@ -27,9 +28,13 @@ AI を活用した間隔反復学習（SRS: Spaced Repetition System）型の単
 | --- | --- |
 | フレームワーク | Next.js 16 (App Router) |
 | UI | React 19 / TypeScript / Tailwind CSS / shadcn/ui (Radix UI) |
+| DB / ORM | PostgreSQL (Neon) + Prisma 6（並列で SQLite も維持） |
+| 認証 | Auth.js v5 (Credentials Provider) |
+| AI | OpenAI gpt-4.1-mini（Chat）+ Whisper（音声書き起こし） |
 | アイコン | lucide-react |
 | フォーム | react-hook-form + zod |
 | グラフ | recharts |
+| テスト | Playwright (e2e スモーク) |
 | パッケージ管理 | pnpm（`pnpm-lock.yaml` 同梱） |
 
 iOS アプリ化に向けては [Capacitor](https://capacitorjs.com/) を本命候補として検討中（後述）。
@@ -61,27 +66,50 @@ flash-mind/
 
 ## セットアップ
 
-前提: Node.js 20+ / pnpm 9+
+前提: Node.js 20+ / pnpm 9+ / Neon アカウント（または Docker Postgres）
 
 ```bash
-# 依存関係のインストール
+# 1. 依存関係のインストール
 pnpm install
 
-# 開発サーバー
+# 2. .env.local を作成して環境変数を設定
+cp .env.example .env.local
+# 以下を埋める:
+#   DATABASE_URL  : Neon の pooled URL (?pgbouncer=true&connection_limit=1)
+#   DIRECT_URL    : Neon の direct URL (migrate 用)
+#   AUTH_SECRET   : `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+#   OPENAI_API_KEY : OpenAI API（Chat = カード生成 / 辞書 / 翻訳、Whisper = Podcast 書き起こし）
+
+# 3. DB マイグレーション + シード投入
+pnpm db:migrate
+pnpm db:seed
+
+# 4. 開発サーバー
 pnpm dev
-# → http://localhost:3000 で表示
+# → http://localhost:3000
 ```
 
-その他のスクリプト:
+### オフライン作業（SQLite）
+
+Neon に接続できない環境では SQLite に切り替えられます。
 
 ```bash
-pnpm build       # 本番ビルド
-pnpm start       # 本番サーバー起動
-pnpm lint        # Lint
-pnpm typecheck   # 型チェックのみ (tsc --noEmit)
+# .env.local の DATABASE_URL を file:./dev.db に書き換え
+pnpm db:generate:sqlite     # Prisma Client を SQLite 用に切替
+pnpm db:migrate:sqlite      # 必要なら（dev.db を作り直す場合）
+pnpm dev
 ```
 
-> 注意: `next.config.mjs` で `typescript.ignoreBuildErrors: true` になっているため、ビルド時に型エラーを検出しません。バックエンド着手のタイミングで `false` に戻すことを推奨します。
+戻すときは `DATABASE_URL` を Neon URL に戻して `pnpm db:generate`。
+
+### その他のスクリプト
+
+```bash
+pnpm build       # 本番ビルド (prisma generate + next build)
+pnpm start       # 本番サーバー起動
+pnpm typecheck   # 型チェックのみ (tsc --noEmit)
+pnpm e2e         # Playwright スモーク
+```
 
 ---
 
@@ -97,23 +125,20 @@ pnpm typecheck   # 型チェックのみ (tsc --noEmit)
 
 ## ロードマップ
 
-### フェーズ 1: UI 整備（現在地）
+### フェーズ 1: UI 整備
 - [x] v0 で生成した画面を取り込み
-- [ ] 画面遷移を App Router のルートへ分割
-- [ ] `screens/*` の props 経由ナビゲーションを `next/link` / Server Component ベースへ整理
-- [ ] モックデータを `lib/mock/` 等に集約
+- [ ] 画面遷移を App Router のルートへ分割（未着手）
+- [ ] モックデータを `lib/mock/` 等に集約（一部完了。バックエンドに置換済み）
 
-### フェーズ 2: データ層・バックエンド
-- [ ] バックエンド方式の選定（候補）
-  - Supabase（PostgreSQL + Auth + Realtime、最短）
-  - Next.js Route Handlers + Prisma + PostgreSQL（自前運用）
-  - Cloudflare Workers + D1（軽量・低コスト寄り）
-- [ ] スキーマ設計（User / Deck / Card / Review / Stat）
-- [ ] SRS アルゴリズム（SM-2 もしくは FSRS）の実装
-- [ ] 認証（メール / Google / Apple Sign In）
-- [ ] AI 機能（例文生成・解説・発音）— Anthropic Claude API を想定
+### フェーズ 2: データ層・バックエンド ✅ 完了
+- [x] バックエンド方式: Next.js Route Handlers + Prisma + PostgreSQL (Neon)
+- [x] スキーマ設計（User / Deck / Card / Review / SrsState / Memo / ImportedContent / ImportJob）
+- [x] SRS アルゴリズム（SM-2）実装
+- [x] 認証（Auth.js v5 + Credentials Provider）
+- [x] AI 連携: OpenAI gpt-4.1-mini（カード生成・辞書・翻訳）+ Whisper（Podcast 書き起こし）
+- [x] コンテンツ取込の非同期ジョブ化（ImportJob テーブル + `next/server` `after()` ワーカー）
 
-### フェーズ 3: iPhone アプリ化
+### フェーズ 3: iPhone アプリ化（現在地）
 本命候補は **Capacitor**（既存の Next.js コードをほぼそのまま流用できる）。
 
 - [ ] Next.js の export 対応（`output: 'export'` の検討）または Capacitor 用ビルドの構成
@@ -126,8 +151,8 @@ pnpm typecheck   # 型チェックのみ (tsc --noEmit)
 
 ### フェーズ 4: 公開・運用
 - [ ] GitHub リポジトリ公開
-- [ ] CI（GitHub Actions: lint / typecheck / build）
-- [ ] Vercel デプロイ
+- [ ] CI（GitHub Actions: typecheck / build / e2e）
+- [ ] Vercel デプロイ（`maxDuration = 300` を使うため Pro 以上）
 - [ ] エラー監視 / アナリティクス
 
 ---

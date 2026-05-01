@@ -2,6 +2,7 @@ import React from "react"
 import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
+import { AuthSessionProvider } from "@/components/providers/session-provider"
 
 const _inter = Inter({ subsets: ["latin"], variable: "--font-inter" })
 
@@ -25,7 +26,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja" className={_inter.variable}>
-      <body className="font-sans antialiased">{children}</body>
+      <body className="font-sans antialiased">
+        <AuthSessionProvider>{children}</AuthSessionProvider>
+      </body>
     </html>
   )
 }

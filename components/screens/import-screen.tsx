@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useCallback, useEffect } from "react"
+import { useState, useRef, useCallback, useEffect, useMemo } from "react"
 import {
   Youtube,
   FileText,
@@ -12,18 +12,33 @@ import {
   SkipBack,
   SkipForward,
   BookPlus,
-  BookOpen,
   Eye,
   EyeOff,
   Upload,
   Sparkles,
   Link2,
   ChevronRight,
+  ChevronDown,
   Plus,
   Search,
+  X,
+  Check,
+  Loader2,
+  Lightbulb,
 } from "lucide-react"
+import { listDecks } from "@/lib/api/decks"
+import { createCards } from "@/lib/api/cards"
+import {
+  createImportFromUrl,
+  createImportFromPdf,
+  getImportJob,
+} from "@/lib/api/imports"
+import { lookupWord } from "@/lib/api/ai"
+import { extractUnknownWords } from "@/lib/api/dictionary"
+import type { ImportJobStatus, ImportResult } from "@/lib/imports/types"
+import type { DeckSummary } from "@/lib/api/types"
+import type { ExtractedWord } from "@/lib/validation/dictionary"
 
-/* ─── Source types ─── */
 const sources = [
   { id: "pdf" as const, name: "PDF", icon: FileText, color: "bg-emerald-500", inputType: "file" as const },
   { id: "podcast" as const, name: "Podcast", icon: Headphones, color: "bg-purple-500", inputType: "url" as const },
@@ -32,57 +47,11 @@ const sources = [
 
 type SourceId = "pdf" | "podcast" | "youtube"
 
-/* ─── Mock transcript data ─── */
-const transcript = [
-  {
-    time: 0,
-    en: "Today we're going to talk about sustainable investing and its impact on the global economy.",
-    ja: "\u4ECA\u65E5\u306F\u30B5\u30B9\u30C6\u30CA\u30D6\u30EB\u6295\u8CC7\u3068\u305D\u306E\u4E16\u754C\u7D4C\u6E08\u3078\u306E\u5F71\u97FF\u306B\u3064\u3044\u3066\u304A\u8A71\u3057\u3057\u307E\u3059\u3002",
-  },
-  {
-    time: 12,
-    en: "The infrastructure required for renewable energy has become a key investment area.",
-    ja: "\u518D\u751F\u53EF\u80FD\u30A8\u30CD\u30EB\u30AE\u30FC\u306B\u5FC5\u8981\u306A\u30A4\u30F3\u30D5\u30E9\u306F\u3001\u91CD\u8981\u306A\u6295\u8CC7\u5206\u91CE\u3068\u306A\u3063\u3066\u3044\u307E\u3059\u3002",
-  },
-  {
-    time: 23,
-    en: "Market volatility has increased significantly due to geopolitical tensions.",
-    ja: "\u5730\u653F\u5B66\u7684\u7DCA\u5F35\u306B\u3088\u308A\u3001\u5E02\u5834\u306E\u5909\u52D5\u6027\u304C\u5927\u5E45\u306B\u9AD8\u307E\u3063\u3066\u3044\u307E\u3059\u3002",
-  },
-  {
-    time: 35,
-    en: "Companies leverage artificial intelligence to mitigate risks in their portfolio management.",
-    ja: "\u4F01\u696D\u306F\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA\u7BA1\u7406\u306E\u30EA\u30B9\u30AF\u3092\u7DE9\u548C\u3059\u308B\u305F\u3081\u306BAI\u3092\u6D3B\u7528\u3057\u3066\u3044\u307E\u3059\u3002",
-  },
-  {
-    time: 48,
-    en: "The resilience of emerging markets has surprised many analysts this quarter.",
-    ja: "\u65B0\u8208\u5E02\u5834\u306E\u56DE\u5FA9\u529B\u306F\u3001\u4ECA\u56DB\u534A\u671F\u591A\u304F\u306E\u30A2\u30CA\u30EA\u30B9\u30C8\u3092\u9A5A\u304B\u305B\u307E\u3057\u305F\u3002",
-  },
-  {
-    time: 60,
-    en: "A paradigm shift in monetary policy has created new opportunities for institutional investors.",
-    ja: "\u91D1\u878D\u653F\u7B56\u306E\u30D1\u30E9\u30C0\u30A4\u30E0\u30B7\u30D5\u30C8\u304C\u3001\u6A5F\u95A2\u6295\u8CC7\u5BB6\u306B\u65B0\u305F\u306A\u6A5F\u4F1A\u3092\u751F\u307F\u51FA\u3057\u3066\u3044\u307E\u3059\u3002",
-  },
-  {
-    time: 74,
-    en: "Building consensus among stakeholders remains a significant challenge in corporate governance.",
-    ja: "\u30B9\u30C6\u30FC\u30AF\u30DB\u30EB\u30C0\u30FC\u9593\u306E\u5408\u610F\u5F62\u6210\u306F\u3001\u30B3\u30FC\u30DD\u30EC\u30FC\u30C8\u30AC\u30D0\u30CA\u30F3\u30B9\u306B\u304A\u3051\u308B\u91CD\u8981\u306A\u8AB2\u984C\u3067\u3059\u3002",
-  },
-  {
-    time: 88,
-    en: "Premium bonds have outperformed traditional equities in this fiscal year.",
-    ja: "\u30D7\u30EC\u30DF\u30A2\u30E0\u50B5\u5238\u306F\u3001\u4ECA\u4F1A\u8A08\u5E74\u5EA6\u5F93\u6765\u306E\u682A\u5F0F\u3092\u4E0A\u56DE\u308B\u30D1\u30D5\u30A9\u30FC\u30DE\u30F3\u30B9\u3092\u898B\u305B\u3066\u3044\u307E\u3059\u3002",
-  },
-]
-
-/* ─── Registered words state ─── */
 interface RegisteredWord {
   word: string
   sourceIndex: number
 }
 
-/* ─── Popover state ─── */
 interface PopoverState {
   word: string
   lineIndex: number
@@ -90,122 +59,297 @@ interface PopoverState {
   y: number
 }
 
-/* ─── Mock meaning lookup ─── */
-const mockMeanings: Record<string, string> = {
-  sustainable: "\u6301\u7D9A\u53EF\u80FD\u306A",
-  investing: "\u6295\u8CC7",
-  impact: "\u5F71\u97FF\u3001\u30A4\u30F3\u30D1\u30AF\u30C8",
-  global: "\u4E16\u754C\u7684\u306A",
-  economy: "\u7D4C\u6E08",
-  infrastructure: "\u30A4\u30F3\u30D5\u30E9\u3001\u57FA\u76E4",
-  renewable: "\u518D\u751F\u53EF\u80FD\u306A",
-  energy: "\u30A8\u30CD\u30EB\u30AE\u30FC",
-  investment: "\u6295\u8CC7",
-  volatility: "\u5909\u52D5\u6027\u3001\u30DC\u30E9\u30C6\u30A3\u30EA\u30C6\u30A3",
-  geopolitical: "\u5730\u653F\u5B66\u7684\u306A",
-  leverage: "\u6D3B\u7528\u3059\u308B\u3001\u3066\u3053",
-  artificial: "\u4EBA\u5DE5\u306E",
-  intelligence: "\u77E5\u80FD\u3001\u60C5\u5831",
-  mitigate: "\u7DE9\u548C\u3059\u308B",
-  portfolio: "\u30DD\u30FC\u30C8\u30D5\u30A9\u30EA\u30AA",
-  resilience: "\u56DE\u5FA9\u529B\u3001\u5F3E\u529B\u6027",
-  emerging: "\u65B0\u8208\u306E",
-  analysts: "\u30A2\u30CA\u30EA\u30B9\u30C8",
-  paradigm: "\u30D1\u30E9\u30C0\u30A4\u30E0\u3001\u6A21\u7BC4",
-  monetary: "\u91D1\u878D\u306E\u3001\u901A\u8CA8\u306E",
-  institutional: "\u6A5F\u95A2\u306E",
-  consensus: "\u5408\u610F\u3001\u30B3\u30F3\u30BB\u30F3\u30B5\u30B9",
-  stakeholders: "\u30B9\u30C6\u30FC\u30AF\u30DB\u30EB\u30C0\u30FC\u3001\u5229\u5BB3\u95A2\u4FC2\u8005",
-  governance: "\u30AC\u30D0\u30CA\u30F3\u30B9\u3001\u7D71\u6CBB",
-  premium: "\u30D7\u30EC\u30DF\u30A2\u30E0\u3001\u4FDD\u967A\u6599",
-  equities: "\u682A\u5F0F",
-  fiscal: "\u4F1A\u8A08\u306E\u3001\u8CA1\u653F\u306E",
-  outperformed: "\u4E0A\u56DE\u3063\u305F",
-}
-
 export function ImportScreen() {
-  /* ─── Screen state: source selection -> transcript viewer ─── */
   const [selectedSource, setSelectedSource] = useState<SourceId | null>(null)
   const [url, setUrl] = useState("")
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [showTranscript, setShowTranscript] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
-  /* ─── Transcript state ─── */
+  // Async import job state. While `jobId` is non-null we poll
+  // GET /api/imports/[jobId] every ~1.5s until status is done/error.
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobProgress, setJobProgress] = useState(0)
+  const [jobStep, setJobStep] = useState<ImportJobStatus["currentStep"]>(null)
+
   const [showJapanese, setShowJapanese] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [activeLine, setActiveLine] = useState(0)
   const [registeredWords, setRegisteredWords] = useState<RegisteredWord[]>([])
+  const [meaningCache, setMeaningCache] = useState<Record<string, string>>({})
+  const [lookupLoading, setLookupLoading] = useState(false)
 
-  /* ─── Inline popover ─── */
   const [popover, setPopover] = useState<PopoverState | null>(null)
   const [meaningPreview, setMeaningPreview] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const [showRegister, setShowRegister] = useState(false)
+  const [decks, setDecks] = useState<DeckSummary[]>([])
+  const [decksLoading, setDecksLoading] = useState(false)
+  const [newDeckName, setNewDeckName] = useState("")
+  const [registering, setRegistering] = useState(false)
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null)
+
+  // 未登録英単語の抽出結果。書き起こし完了後に取得
+  const [extractedWords, setExtractedWords] = useState<ExtractedWord[]>([])
+  const [extractStats, setExtractStats] = useState<{
+    unique: number
+    known: number
+  } | null>(null)
+  const [extractLoading, setExtractLoading] = useState(false)
+  const [extractOpen, setExtractOpen] = useState(false)
 
   const playInterval = useRef<ReturnType<typeof setInterval> | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
-  const totalDuration = 100
 
+  const transcript = importResult?.transcript ?? []
+  const totalDuration = useMemo(() => {
+    if (importResult?.durationSeconds) return importResult.durationSeconds
+    if (transcript.length === 0) return 0
+    const last = transcript[transcript.length - 1].time
+    return last + 10
+  }, [importResult, transcript])
+
+  const showTranscript = importResult !== null
   const selected = sources.find((s) => s.id === selectedSource)
 
   /* ─── Close popover on outside tap ─── */
+  // React onClick stopPropagation does not stop native bubbling, so a click on
+  // a button inside the popover would still reach a document listener. Use a
+  // ref-based containment check instead.
   useEffect(() => {
     if (!popover) return
-    const handler = () => { setPopover(null); setMeaningPreview(null) }
-    const t = setTimeout(() => document.addEventListener("click", handler, { once: true }), 50)
-    return () => clearTimeout(t)
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current?.contains(e.target as Node)) return
+      setPopover(null)
+      setMeaningPreview(null)
+    }
+    const t = setTimeout(() => document.addEventListener("click", handler), 50)
+    return () => {
+      clearTimeout(t)
+      document.removeEventListener("click", handler)
+    }
   }, [popover])
 
-  /* ─── Playback simulation ─── */
+  /* ─── Playback simulation (PDF lines have synthetic time = index) ─── */
   useEffect(() => {
     if (isPlaying) {
       playInterval.current = setInterval(() => {
         setCurrentTime((t) => {
           const next = t + 1
-          if (next >= totalDuration) { setIsPlaying(false); return totalDuration }
+          if (next >= totalDuration) {
+            setIsPlaying(false)
+            return totalDuration
+          }
           return next
         })
       }, 1000)
     }
-    return () => { if (playInterval.current) clearInterval(playInterval.current) }
-  }, [isPlaying])
+    return () => {
+      if (playInterval.current) clearInterval(playInterval.current)
+    }
+  }, [isPlaying, totalDuration])
 
-  /* ─── Update active line based on time ─── */
   useEffect(() => {
     for (let i = transcript.length - 1; i >= 0; i--) {
-      if (currentTime >= transcript[i].time) { setActiveLine(i); break }
+      if (currentTime >= transcript[i].time) {
+        setActiveLine(i)
+        break
+      }
     }
-  }, [currentTime])
+  }, [currentTime, transcript])
 
   const formatTime = (sec: number) => {
+    if (importResult?.sourceType === "pdf") return `#${sec + 1}`
     const m = Math.floor(sec / 60)
     const s = sec % 60
     return `${m}:${s.toString().padStart(2, "0")}`
   }
 
-  const handleAnalyze = useCallback(() => {
+  const resetAnalysis = () => {
+    setImportResult(null)
+    setRegisteredWords([])
+    setMeaningCache({})
+    setShowRegister(false)
+    setRegisterSuccess(null)
+    setIsPlaying(false)
+    setCurrentTime(0)
+    setActiveLine(0)
+    setJobId(null)
+    setJobProgress(0)
+    setJobStep(null)
+    setExtractedWords([])
+    setExtractStats(null)
+    setExtractOpen(false)
+  }
+
+  const handleAnalyze = useCallback(async () => {
+    if (!selected) return
+    setError(null)
     setIsAnalyzing(true)
-    setTimeout(() => { setIsAnalyzing(false); setShowTranscript(true) }, 1500)
-  }, [])
+    setJobProgress(0)
+    setJobStep(null)
+    try {
+      let accepted: { jobId: string }
+      if (selected.id === "pdf") {
+        if (!pdfFile) {
+          setError("PDF ファイルを選択してください")
+          setIsAnalyzing(false)
+          return
+        }
+        accepted = await createImportFromPdf(pdfFile)
+      } else if (selected.id === "youtube") {
+        if (!url.trim()) {
+          setError("YouTube URL を入力してください")
+          setIsAnalyzing(false)
+          return
+        }
+        accepted = await createImportFromUrl("youtube", url.trim())
+      } else {
+        if (!url.trim()) {
+          setError("Podcast URL を入力してください")
+          setIsAnalyzing(false)
+          return
+        }
+        accepted = await createImportFromUrl("podcast", url.trim())
+      }
+      setJobId(accepted.jobId)
+      // Polling effect below takes over from here; isAnalyzing stays true
+      // until the job reaches a terminal state.
+    } catch (e) {
+      console.error(e)
+      setError(e instanceof Error ? e.message : "取得に失敗しました")
+      setIsAnalyzing(false)
+    }
+  }, [selected, pdfFile, url])
+
+  // Poll job status while a job is in flight. First tick after 500ms (so we
+  // see "running" quickly), subsequent ticks every 1500ms.
+  useEffect(() => {
+    if (!jobId) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        const status = await getImportJob(jobId)
+        if (cancelled) return
+        setJobProgress(status.progress)
+        setJobStep(status.currentStep)
+        if (status.status === "done" && status.result) {
+          setImportResult(status.result)
+          setJobId(null)
+          setIsAnalyzing(false)
+          return
+        }
+        if (status.status === "error") {
+          setError(status.errorMessage ?? "取得に失敗しました")
+          setJobId(null)
+          setIsAnalyzing(false)
+          return
+        }
+      } catch (e) {
+        console.error(e)
+        // Transient polling errors: keep retrying. Hard failures will
+        // eventually surface as the job rolling to error status server-side.
+      }
+      timer = setTimeout(tick, 1500)
+    }
+
+    timer = setTimeout(tick, 500)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [jobId])
+
+  // 書き起こし完了後に未登録語を抽出。importResult が変わるたびに 1 回。
+  useEffect(() => {
+    if (!importResult || transcript.length === 0) {
+      setExtractedWords([])
+      setExtractStats(null)
+      return
+    }
+    const text = transcript.map((t) => t.en).join("\n")
+    if (!text.trim()) return
+    let cancelled = false
+    setExtractLoading(true)
+    extractUnknownWords({ text, limit: 100 })
+      .then((res) => {
+        if (cancelled) return
+        setExtractedWords(res.unknownWords)
+        setExtractStats({
+          unique: res.totalUniqueTokens,
+          known: res.totalRegisteredCards,
+        })
+        // 30 件以下なら自動展開、多いときは畳んで集中力を保つ
+        setExtractOpen(res.unknownWords.length > 0 && res.unknownWords.length <= 30)
+      })
+      .catch((e) => {
+        if (!cancelled) console.error("[extract-words]", e)
+      })
+      .finally(() => {
+        if (!cancelled) setExtractLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [importResult, transcript])
 
   const isRegistered = (word: string, lineIndex: number) =>
     registeredWords.some((w) => w.word === word && w.sourceIndex === lineIndex)
 
-  /* ─── Handle word tap: show inline popover ─── */
-  const handleWordTap = useCallback((e: React.MouseEvent | React.TouchEvent, word: string, lineIndex: number) => {
-    e.stopPropagation()
-    const rect = (e.target as HTMLElement).getBoundingClientRect()
-    const containerRect = containerRef.current?.getBoundingClientRect()
-    if (!containerRect) return
+  const isWordRegistered = (word: string) =>
+    registeredWords.some((w) => w.word === word.toLowerCase())
 
-    const x = rect.left + rect.width / 2 - containerRect.left
-    const y = rect.top - containerRect.top
+  const findFirstLineIndex = useCallback(
+    (word: string): number => {
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+      const re = new RegExp(`\\b${escaped}\\b`, "i")
+      for (let i = 0; i < transcript.length; i++) {
+        if (re.test(transcript[i].en)) return i
+      }
+      return 0
+    },
+    [transcript],
+  )
 
-    setMeaningPreview(null)
-    setPopover({ word, lineIndex, x, y })
-  }, [])
+  const toggleExtractedWord = useCallback(
+    (word: string) => {
+      const lc = word.toLowerCase()
+      // 既に何らかの行で登録済みなら、登録済みの全行を外す
+      const existing = registeredWords.filter((w) => w.word === lc)
+      if (existing.length > 0) {
+        setRegisteredWords((prev) => prev.filter((w) => w.word !== lc))
+        return
+      }
+      const lineIdx = findFirstLineIndex(word)
+      setRegisteredWords((prev) => [...prev, { word: lc, sourceIndex: lineIdx }])
+    },
+    [registeredWords, findFirstLineIndex],
+  )
 
-  /* ─── Register word ─── */
+  const handleWordTap = useCallback(
+    (e: React.MouseEvent | React.TouchEvent, word: string, lineIndex: number) => {
+      e.stopPropagation()
+      const rect = (e.target as HTMLElement).getBoundingClientRect()
+      const containerRect = containerRef.current?.getBoundingClientRect()
+      if (!containerRect) return
+
+      const x = rect.left + rect.width / 2 - containerRect.left
+      const y = rect.top - containerRect.top
+
+      setMeaningPreview(meaningCache[word] ?? null)
+      setPopover({ word, lineIndex, x, y })
+    },
+    [meaningCache],
+  )
+
   const registerWord = useCallback((word: string, lineIndex: number) => {
     setRegisteredWords((prev) => {
       const exists = prev.find((w) => w.word === word && w.sourceIndex === lineIndex)
@@ -216,20 +360,40 @@ export function ImportScreen() {
     setMeaningPreview(null)
   }, [])
 
-  /* ─── Render individual word as tappable span ─── */
+  const handleLookup = useCallback(async () => {
+    if (!popover) return
+    const cached = meaningCache[popover.word]
+    if (cached) {
+      setMeaningPreview(cached)
+      return
+    }
+    setLookupLoading(true)
+    try {
+      const sentence = transcript[popover.lineIndex]?.en ?? ""
+      const { meaning } = await lookupWord(popover.word, sentence)
+      const value = meaning || "（取得できませんでした）"
+      setMeaningCache((prev) => ({ ...prev, [popover.word]: value }))
+      setMeaningPreview(value)
+    } catch (e) {
+      console.error(e)
+      setMeaningPreview("（辞書アクセスに失敗）")
+    } finally {
+      setLookupLoading(false)
+    }
+  }, [popover, meaningCache, transcript])
+
   const renderWords = (text: string, lineIndex: number) => {
     const words = text.split(/(\s+)/)
     return words.map((token, i) => {
       if (/^\s+$/.test(token)) return <span key={i}>{" "}</span>
       const cleanWord = token.replace(/[.,!?;:'"()]/g, "").toLowerCase()
+      if (!cleanWord) return <span key={i}>{token}</span>
       const registered = isRegistered(cleanWord, lineIndex)
       return (
         <span
           key={i}
           className={`inline-block rounded px-0.5 transition-colors select-none cursor-pointer ${
-            registered
-              ? "bg-primary/20 text-primary font-semibold"
-              : "active:bg-accent/20"
+            registered ? "bg-primary/20 text-primary font-semibold" : "active:bg-accent/20"
           }`}
           onClick={(e) => handleWordTap(e, cleanWord, lineIndex)}
         >
@@ -239,13 +403,81 @@ export function ImportScreen() {
     })
   }
 
+  /* ─── Open the deck picker, fetch deck list if not cached ─── */
+  const openRegisterPanel = useCallback(async () => {
+    if (registeredWords.length === 0) return
+    setShowRegister(true)
+    setRegisterSuccess(null)
+    if (decks.length === 0) {
+      setDecksLoading(true)
+      try {
+        const list = await listDecks()
+        setDecks(list)
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setDecksLoading(false)
+      }
+    }
+  }, [registeredWords, decks.length])
+
+  /* ─── Resolve any missing meanings, then bulk-create cards in the deck. ─── */
+  const submitRegister = useCallback(
+    async (deckId: string) => {
+      setRegistering(true)
+      try {
+        // Fill in any missing meanings sequentially. (Cheap with Haiku 4.5.)
+        const filled: Record<string, string> = { ...meaningCache }
+        for (const rw of registeredWords) {
+          if (filled[rw.word]) continue
+          try {
+            const sentence = transcript[rw.sourceIndex]?.en ?? ""
+            const { meaning } = await lookupWord(rw.word, sentence)
+            filled[rw.word] = meaning || ""
+          } catch (e) {
+            console.error(e)
+            filled[rw.word] = ""
+          }
+        }
+        setMeaningCache(filled)
+
+        // Dedupe by word so we don't insert duplicates of the same lemma.
+        const seen = new Set<string>()
+        const cards = registeredWords
+          .filter((rw) => {
+            if (seen.has(rw.word)) return false
+            seen.add(rw.word)
+            return true
+          })
+          .map((rw) => ({
+            word: rw.word,
+            meaning: filled[rw.word] || "（意味未取得）",
+            example: transcript[rw.sourceIndex]?.en ?? null,
+          }))
+
+        const result = await createCards(deckId, cards)
+        const deck = decks.find((d) => d.id === deckId)
+        setRegisterSuccess(
+          `${result.created} 枚を「${deck?.name ?? "デッキ"}」に追加しました`,
+        )
+        setRegisteredWords([])
+      } catch (e) {
+        console.error(e)
+        setError(e instanceof Error ? e.message : "登録に失敗しました")
+      } finally {
+        setRegistering(false)
+      }
+    },
+    [registeredWords, meaningCache, transcript, decks],
+  )
+
   /* ═══════════════ Source Selection View ═══════════════ */
   if (!showTranscript) {
     return (
       <div className="h-full flex flex-col">
         <div className="pt-16 px-5 pb-3">
-          <h1 className="text-2xl font-bold text-foreground mb-1">{"\u30B3\u30F3\u30C6\u30F3\u30C4\u53D6\u8FBC"}</h1>
-          <p className="text-sm text-muted-foreground">{"\u5916\u90E8\u30BD\u30FC\u30B9\u304B\u3089\u66F8\u304D\u8D77\u3053\u3057\u3092\u8AAD\u307F\u8FBC\u307F"}</p>
+          <h1 className="text-2xl font-bold text-foreground mb-1">コンテンツ取込</h1>
+          <p className="text-sm text-muted-foreground">外部ソースから書き起こしを読み込み</p>
         </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-4">
@@ -256,7 +488,10 @@ export function ImportScreen() {
               return (
                 <button
                   key={source.id}
-                  onClick={() => setSelectedSource(source.id)}
+                  onClick={() => {
+                    setSelectedSource(source.id)
+                    setError(null)
+                  }}
                   className={`flex items-center gap-4 rounded-2xl p-4 text-left transition-all active:scale-[0.98] ${
                     isSelected ? "bg-primary/10 border-2 border-primary" : "bg-card border-2 border-border"
                   }`}
@@ -267,9 +502,9 @@ export function ImportScreen() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-foreground">{source.name}</h3>
                     <p className="text-xs text-muted-foreground">
-                      {source.id === "pdf" && "\u66F8\u304D\u8D77\u3053\u3057\u3092\u62BD\u51FA\u3057\u3066\u8868\u793A"}
-                      {source.id === "podcast" && "\u97F3\u58F0\u3092\u66F8\u304D\u8D77\u3053\u3057\u3066\u8868\u793A"}
-                      {source.id === "youtube" && "\u5B57\u5E55\u3092\u66F8\u304D\u8D77\u3053\u3057\u3066\u8868\u793A"}
+                      {source.id === "pdf" && "書き起こしを抽出して表示"}
+                      {source.id === "podcast" && "音声を書き起こして表示"}
+                      {source.id === "youtube" && "字幕を書き起こして表示"}
                     </p>
                   </div>
                   <ChevronRight className={`w-5 h-5 ${isSelected ? "text-primary" : "text-muted-foreground/40"}`} />
@@ -283,23 +518,46 @@ export function ImportScreen() {
               <div className="bg-card rounded-2xl border border-border p-4 mb-4">
                 <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
                   <Link2 className="w-4 h-4 text-primary" />
-                  {selected.name}{"\u304B\u3089\u53D6\u8FBC"}
+                  {selected.name}から取込
                 </h3>
 
                 {selected.inputType === "file" ? (
-                  <div className="border-2 border-dashed border-border rounded-xl p-6 text-center">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-border rounded-xl p-6 text-center cursor-pointer active:bg-secondary/30"
+                  >
                     <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-                    <p className="text-sm text-muted-foreground">{"\u30D5\u30A1\u30A4\u30EB\u3092\u30C9\u30ED\u30C3\u30D7"}</p>
-                    <button className="mt-2 text-sm text-primary font-medium">{"\u30D5\u30A1\u30A4\u30EB\u3092\u9078\u629E"}</button>
+                    {pdfFile ? (
+                      <p className="text-sm text-foreground font-medium">{pdfFile.name}</p>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground">ファイルをドロップ</p>
+                        <p className="mt-2 text-sm text-primary font-medium">ファイルを選択</p>
+                      </>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] ?? null
+                        setPdfFile(f)
+                      }}
+                    />
                   </div>
                 ) : (
                   <input
                     type="url"
-                    placeholder={selected.id === "youtube" ? "YouTube URL\u3092\u8CBC\u308A\u4ED8\u3051" : "Podcast URL\u3092\u8CBC\u308A\u4ED8\u3051"}
+                    placeholder={selected.id === "youtube" ? "YouTube URL を貼り付け" : "Podcast URL を貼り付け"}
                     value={url}
                     onChange={(e) => setUrl(e.target.value)}
                     className="w-full bg-background border border-border rounded-xl px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground outline-none focus:ring-2 focus:ring-primary/30"
                   />
+                )}
+
+                {error && (
+                  <p className="mt-2 text-xs text-destructive">{error}</p>
                 )}
 
                 <button
@@ -309,24 +567,35 @@ export function ImportScreen() {
                 >
                   {isAnalyzing ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                      <span>{"\u89E3\u6790\u4E2D..."}</span>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>
+                        {jobStep === "fetching"
+                          ? "取得中"
+                          : jobStep === "transcribing"
+                            ? "音声書き起こし中"
+                            : jobStep === "translating"
+                              ? "翻訳中"
+                              : jobStep === "persisting"
+                                ? "保存中"
+                                : "処理中"}
+                        {jobId ? ` ${jobProgress}%` : "..."}
+                      </span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4" />
-                      <span>{"\u66F8\u304D\u8D77\u3053\u3057\u3092\u53D6\u5F97"}</span>
+                      <span>書き起こしを取得</span>
                     </>
                   )}
                 </button>
               </div>
 
               <div className="bg-secondary/50 rounded-2xl p-4">
-                <h4 className="text-xs font-bold text-foreground mb-2">{"\u64CD\u4F5C\u65B9\u6CD5"}</h4>
+                <h4 className="text-xs font-bold text-foreground mb-2">操作方法</h4>
                 <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
-                  <p>{"\u2022 \u5358\u8A9E\u3092\u30BF\u30C3\u30D7 \u2192 \u767B\u9332/\u8F9E\u66F8\u306E\u30DF\u30CB\u30D0\u30D6\u30EB\u304C\u8868\u793A"}</p>
-                  <p>{"\u2022 \u4E0B\u90E8\u306E\u518D\u751F\u30DC\u30BF\u30F3\u3067\u97F3\u58F0\u518D\u751F"}</p>
-                  <p>{"\u2022 \u53F3\u4E0A\u306E\u76EE\u30A2\u30A4\u30B3\u30F3\u3067\u548C\u8A33\u8868\u793A\u5207\u66FF"}</p>
+                  <p>• 単語をタップ → 登録/辞書のミニバブルが表示</p>
+                  <p>• 下部の再生ボタンで音声再生（PDF はスクロール）</p>
+                  <p>• 右上の目アイコンで和訳表示切替</p>
                 </div>
               </div>
             </div>
@@ -342,9 +611,9 @@ export function ImportScreen() {
       {/* Header */}
       <div className="pt-14 px-4 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <button onClick={() => setShowTranscript(false)} className="flex items-center gap-1 text-primary active:opacity-70">
+          <button onClick={resetAnalysis} className="flex items-center gap-1 text-primary active:opacity-70">
             <ChevronLeft className="w-5 h-5" />
-            <span className="text-sm font-medium">{"\u623B\u308B"}</span>
+            <span className="text-sm font-medium">戻る</span>
           </button>
           <div className="flex items-center gap-1.5 bg-secondary rounded-full px-3 py-1">
             {selected && (() => { const Icon = selected.icon; return <Icon className="w-3.5 h-3.5 text-muted-foreground" /> })()}
@@ -355,7 +624,7 @@ export function ImportScreen() {
             className="flex items-center gap-1 text-sm text-muted-foreground active:opacity-70"
           >
             {showJapanese ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-            <span className="text-xs">{"\u548C\u8A33"}</span>
+            <span className="text-xs">和訳</span>
           </button>
         </div>
       </div>
@@ -365,19 +634,122 @@ export function ImportScreen() {
         <div className="flex items-center gap-2 bg-primary/5 border border-primary/10 rounded-xl px-3 py-2">
           <BookPlus className="w-4 h-4 text-primary flex-shrink-0" />
           <span className="text-xs text-foreground">
-            <span className="font-bold text-primary">{registeredWords.length}</span>{"\u8A9E \u9078\u629E\u6E08\u307F"}
+            <span className="font-bold text-primary">{registeredWords.length}</span>
+            語 選択済み
           </span>
           {registeredWords.length > 0 && (
-            <button className="ml-auto text-xs font-semibold text-primary active:opacity-70">{"\u30C7\u30C3\u30AD\u306B\u767B\u9332"}</button>
+            <button
+              onClick={openRegisterPanel}
+              className="ml-auto text-xs font-semibold text-primary active:opacity-70"
+            >
+              デッキに登録
+            </button>
           )}
         </div>
+        {registerSuccess && (
+          <div className="mt-2 flex items-center gap-2 text-xs text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+            <Check className="w-4 h-4" />
+            <span>{registerSuccess}</span>
+          </div>
+        )}
       </div>
+
+      {/* Extracted unknown words panel */}
+      {(extractLoading || extractedWords.length > 0) && (
+        <div className="px-4 pb-2 flex-shrink-0">
+          <button
+            type="button"
+            onClick={() => setExtractOpen((v) => !v)}
+            className="w-full flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 active:opacity-80"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <Lightbulb className="w-4 h-4 text-amber-600 shrink-0" />
+              <span className="text-xs text-foreground truncate">
+                {extractLoading ? (
+                  <span className="text-muted-foreground">未登録語を抽出中…</span>
+                ) : (
+                  <>
+                    <span className="font-bold text-amber-700">
+                      {extractedWords.length}
+                    </span>
+                    <span className="ml-1">
+                      語の未登録英単語が見つかりました
+                    </span>
+                    {extractStats && (
+                      <span className="ml-1 text-muted-foreground">
+                        （登録済 {extractStats.known}）
+                      </span>
+                    )}
+                  </>
+                )}
+              </span>
+            </div>
+            {!extractLoading && extractedWords.length > 0 && (
+              <ChevronDown
+                className={`w-4 h-4 text-amber-700 shrink-0 transition-transform ${
+                  extractOpen ? "rotate-180" : ""
+                }`}
+              />
+            )}
+          </button>
+          {extractOpen && extractedWords.length > 0 && (
+            <div className="mt-2 max-h-48 overflow-y-auto space-y-1 pr-1">
+              {extractedWords.map((ew) => {
+                const registered = isWordRegistered(ew.word)
+                return (
+                  <div
+                    key={ew.word}
+                    className="flex items-start gap-2 bg-card border border-border rounded-lg px-2.5 py-1.5"
+                  >
+                    <button
+                      onClick={() => toggleExtractedWord(ew.word)}
+                      className={`shrink-0 w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
+                        registered
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-secondary text-muted-foreground hover:bg-secondary/70"
+                      }`}
+                      aria-label={registered ? "選択解除" : "選択"}
+                    >
+                      {registered ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <Plus className="w-3 h-3" />
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-sm font-medium text-foreground truncate">
+                          {ew.word}
+                        </span>
+                        {ew.pos && (
+                          <span className="text-[9px] text-muted-foreground bg-secondary px-1 py-0.5 rounded">
+                            {ew.pos}
+                          </span>
+                        )}
+                        <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                          ×{ew.count}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-1">
+                        {ew.definition}
+                      </p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Transcript lines */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-y-auto px-4 pb-3"
-        onClick={() => { setPopover(null); setMeaningPreview(null) }}
+        onClick={() => {
+          setPopover(null)
+          setMeaningPreview(null)
+        }}
       >
         <div className="flex flex-col gap-1">
           {transcript.map((line, idx) => (
@@ -389,16 +761,17 @@ export function ImportScreen() {
             >
               <span
                 className={`text-[10px] font-mono cursor-pointer ${idx === activeLine ? "text-primary" : "text-muted-foreground/60"}`}
-                onClick={() => { setCurrentTime(line.time); setActiveLine(idx) }}
+                onClick={() => {
+                  setCurrentTime(line.time)
+                  setActiveLine(idx)
+                }}
               >
                 {formatTime(line.time)}
               </span>
 
-              <p className="text-sm leading-relaxed text-foreground mt-0.5">
-                {renderWords(line.en, idx)}
-              </p>
+              <p className="text-sm leading-relaxed text-foreground mt-0.5">{renderWords(line.en, idx)}</p>
 
-              {showJapanese && (
+              {showJapanese && line.ja && (
                 <p className="text-xs leading-relaxed text-muted-foreground mt-1">{line.ja}</p>
               )}
             </div>
@@ -409,25 +782,22 @@ export function ImportScreen() {
       {/* ─── Inline Popover ─── */}
       {popover && (
         <div
+          ref={popoverRef}
           className="absolute z-50"
           style={{
             left: `${Math.max(80, Math.min(popover.x, (containerRef.current?.clientWidth ?? 300) - 80))}px`,
             top: `${popover.y - 8}px`,
             transform: "translate(-50%, -100%)",
           }}
-          onClick={(e) => e.stopPropagation()}
         >
-          {/* Meaning preview (shown when search pressed) */}
           {meaningPreview && (
-            <div className="mb-1.5 bg-card border border-border rounded-xl px-3 py-2 shadow-lg min-w-[160px] text-center animate-slide-up">
+            <div className="mb-1.5 bg-card border border-border rounded-xl px-3 py-2 shadow-lg min-w-[160px] max-w-[260px] text-center animate-slide-up">
               <p className="text-xs font-bold text-foreground">{popover.word}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{meaningPreview}</p>
             </div>
           )}
 
-          {/* Action bubble */}
           <div className="flex items-center gap-1 bg-foreground rounded-full px-1.5 py-1 shadow-xl">
-            {/* Register button */}
             <button
               onClick={() => registerWord(popover.word, popover.lineIndex)}
               className={`flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
@@ -437,26 +807,25 @@ export function ImportScreen() {
               }`}
             >
               <Plus className="w-3 h-3" />
-              <span>{isRegistered(popover.word, popover.lineIndex) ? "\u767B\u9332\u6E08" : "\u767B\u9332"}</span>
+              <span>{isRegistered(popover.word, popover.lineIndex) ? "登録済" : "登録"}</span>
             </button>
 
-            {/* Divider */}
             <div className="w-px h-5 bg-background/20" />
 
-            {/* Meaning lookup button */}
             <button
-              onClick={() => {
-                const m = mockMeanings[popover.word]
-                setMeaningPreview(m || "\u8F9E\u66F8\u306B\u898B\u3064\u304B\u308A\u307E\u305B\u3093")
-              }}
-              className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium bg-background/20 text-background hover:bg-background/30 transition-colors"
+              onClick={handleLookup}
+              disabled={lookupLoading}
+              className="flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-medium bg-background/20 text-background hover:bg-background/30 transition-colors disabled:opacity-50"
             >
-              <Search className="w-3 h-3" />
-              <span>{"\u8F9E\u66F8"}</span>
+              {lookupLoading ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Search className="w-3 h-3" />
+              )}
+              <span>辞書</span>
             </button>
           </div>
 
-          {/* Arrow */}
           <div className="flex justify-center">
             <div className="w-2.5 h-2.5 bg-foreground rotate-45 -mt-1.5" />
           </div>
@@ -466,14 +835,14 @@ export function ImportScreen() {
       {/* ─── Playback controls ─── */}
       <div className="flex-shrink-0 border-t border-border bg-card px-4 pt-3 pb-6">
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-[10px] text-muted-foreground font-mono w-8 text-right">{formatTime(currentTime)}</span>
+          <span className="text-[10px] text-muted-foreground font-mono w-10 text-right">{formatTime(currentTime)}</span>
           <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: `${(currentTime / totalDuration) * 100}%` }}
+              style={{ width: `${totalDuration ? (currentTime / totalDuration) * 100 : 0}%` }}
             />
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono w-8">{formatTime(totalDuration)}</span>
+          <span className="text-[10px] text-muted-foreground font-mono w-10">{formatTime(Math.max(totalDuration - 1, 0))}</span>
         </div>
 
         <div className="flex items-center justify-center gap-5">
@@ -485,7 +854,10 @@ export function ImportScreen() {
             <SkipBack className="w-5 h-5 text-foreground" />
           </button>
           <button
-            onClick={() => { setCurrentTime(0); setIsPlaying(false) }}
+            onClick={() => {
+              setCurrentTime(0)
+              setIsPlaying(false)
+            }}
             className="w-11 h-11 rounded-full bg-secondary flex items-center justify-center active:bg-muted transition-colors"
             aria-label="Stop"
           >
@@ -511,6 +883,67 @@ export function ImportScreen() {
           </button>
         </div>
       </div>
+
+      {/* ─── Deck picker bottom sheet ─── */}
+      {showRegister && (
+        <div
+          className="absolute inset-0 z-40 bg-black/40 flex items-end"
+          onClick={() => !registering && setShowRegister(false)}
+        >
+          <div
+            className="w-full bg-background rounded-t-3xl border-t border-border max-h-[70%] flex flex-col animate-slide-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <h3 className="font-semibold text-foreground">登録先デッキを選択</h3>
+              <button
+                onClick={() => setShowRegister(false)}
+                disabled={registering}
+                className="p-1 -mr-1 active:opacity-70 disabled:opacity-50"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5 text-muted-foreground" />
+              </button>
+            </div>
+            <p className="px-5 pb-2 text-xs text-muted-foreground">
+              {registeredWords.length} 語をまとめてカード化します
+            </p>
+            <div className="flex-1 overflow-y-auto px-3 pb-2">
+              {decksLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : decks.length === 0 ? (
+                <p className="px-2 py-4 text-sm text-muted-foreground">
+                  デッキがありません。新規デッキ機能は近日対応予定。
+                </p>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  {decks.map((deck) => (
+                    <button
+                      key={deck.id}
+                      onClick={() => submitRegister(deck.id)}
+                      disabled={registering}
+                      className="flex items-center gap-3 px-3 py-3 rounded-xl bg-card border border-border active:bg-secondary/40 disabled:opacity-50 text-left"
+                    >
+                      <div className={`w-3 h-3 rounded-full ${deck.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{deck.name}</p>
+                        <p className="text-xs text-muted-foreground">{deck.totalCards} 枚</p>
+                      </div>
+                      {registering ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -20,6 +20,16 @@ next-env.d.ts.bak
 .env.local
 .env*.local
 
+# Prisma local SQLite (dev only)
+prisma/dev.db
+prisma/dev.db-journal
+prisma/sqlite/dev.db
+prisma/sqlite/dev.db-journal
+
+# 商用辞書原本（再配布禁止・seed 入力としてローカルからのみ参照）
+EIJIRO*.TXT
+EIJIRO*.txt
+
 # Logs
 *.log
 npm-debug.log*
@@ -30,6 +40,11 @@ pnpm-debug.log*
 # Test / coverage
 coverage/
 .nyc_output/
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
 
 # TypeScript
 *.tsbuildinfo
