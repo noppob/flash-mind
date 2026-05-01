@@ -10,7 +10,7 @@ export default defineConfig({
   fullyParallel: false, // a single Next.js dev server backs every test
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  workers: 1, // shared SQLite + dev server → keep serial
+  workers: 1, // shared dev server + Postgres connection pool → keep serial
   reporter: process.env.CI ? "github" : [["list"]],
   use: {
     baseURL: BASE_URL,
@@ -24,7 +24,8 @@ export default defineConfig({
     },
   ],
   // Reuse the dev server if it's already running (e.g. during local dev), else
-  // boot one. The seeded test user lives in the SQLite dev DB.
+  // boot one. The seeded test user lives in the configured DB (Neon dev branch
+  // by default; SQLite when DATABASE_URL=file:./dev.db).
   webServer: {
     command: "pnpm dev",
     url: BASE_URL,
