@@ -26,9 +26,13 @@ import {
 } from "lucide-react"
 import { listDecks } from "@/lib/api/decks"
 import { createCards } from "@/lib/api/cards"
-import { importFromUrl, importPdf } from "@/lib/api/imports"
+import {
+  createImportFromUrl,
+  createImportFromPdf,
+  getImportJob,
+} from "@/lib/api/imports"
 import { lookupWord } from "@/lib/api/ai"
-import type { ImportResult } from "@/lib/imports/types"
+import type { ImportJobStatus, ImportResult } from "@/lib/imports/types"
 import type { DeckSummary } from "@/lib/api/types"
 
 const sources = [
@@ -58,6 +62,12 @@ export function ImportScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+
+  // Async import job state. While `jobId` is non-null we poll
+  // GET /api/imports/[jobId] every ~1.5s until status is done/error.
+  const [jobId, setJobId] = useState<string | null>(null)
+  const [jobProgress, setJobProgress] = useState(0)
+  const [jobStep, setJobStep] = useState<ImportJobStatus["currentStep"]>(null)
 
   const [showJapanese, setShowJapanese] = useState(true)
   const [isPlaying, setIsPlaying] = useState(false)
@@ -148,41 +158,91 @@ export function ImportScreen() {
     setIsPlaying(false)
     setCurrentTime(0)
     setActiveLine(0)
+    setJobId(null)
+    setJobProgress(0)
+    setJobStep(null)
   }
 
   const handleAnalyze = useCallback(async () => {
     if (!selected) return
     setError(null)
     setIsAnalyzing(true)
+    setJobProgress(0)
+    setJobStep(null)
     try {
-      let result: ImportResult
+      let accepted: { jobId: string }
       if (selected.id === "pdf") {
         if (!pdfFile) {
           setError("PDF ファイルを選択してください")
+          setIsAnalyzing(false)
           return
         }
-        result = await importPdf(pdfFile)
+        accepted = await createImportFromPdf(pdfFile)
       } else if (selected.id === "youtube") {
         if (!url.trim()) {
           setError("YouTube URL を入力してください")
+          setIsAnalyzing(false)
           return
         }
-        result = await importFromUrl("youtube", url.trim())
+        accepted = await createImportFromUrl("youtube", url.trim())
       } else {
         if (!url.trim()) {
           setError("Podcast URL を入力してください")
+          setIsAnalyzing(false)
           return
         }
-        result = await importFromUrl("podcast", url.trim())
+        accepted = await createImportFromUrl("podcast", url.trim())
       }
-      setImportResult(result)
+      setJobId(accepted.jobId)
+      // Polling effect below takes over from here; isAnalyzing stays true
+      // until the job reaches a terminal state.
     } catch (e) {
       console.error(e)
       setError(e instanceof Error ? e.message : "取得に失敗しました")
-    } finally {
       setIsAnalyzing(false)
     }
   }, [selected, pdfFile, url])
+
+  // Poll job status while a job is in flight. First tick after 500ms (so we
+  // see "running" quickly), subsequent ticks every 1500ms.
+  useEffect(() => {
+    if (!jobId) return
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const tick = async () => {
+      if (cancelled) return
+      try {
+        const status = await getImportJob(jobId)
+        if (cancelled) return
+        setJobProgress(status.progress)
+        setJobStep(status.currentStep)
+        if (status.status === "done" && status.result) {
+          setImportResult(status.result)
+          setJobId(null)
+          setIsAnalyzing(false)
+          return
+        }
+        if (status.status === "error") {
+          setError(status.errorMessage ?? "取得に失敗しました")
+          setJobId(null)
+          setIsAnalyzing(false)
+          return
+        }
+      } catch (e) {
+        console.error(e)
+        // Transient polling errors: keep retrying. Hard failures will
+        // eventually surface as the job rolling to error status server-side.
+      }
+      timer = setTimeout(tick, 1500)
+    }
+
+    timer = setTimeout(tick, 500)
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [jobId])
 
   const isRegistered = (word: string, lineIndex: number) =>
     registeredWords.some((w) => w.word === word && w.sourceIndex === lineIndex)
@@ -356,7 +416,7 @@ export function ImportScreen() {
                     <h3 className="font-semibold text-foreground">{source.name}</h3>
                     <p className="text-xs text-muted-foreground">
                       {source.id === "pdf" && "書き起こしを抽出して表示"}
-                      {source.id === "podcast" && "音声を書き起こして表示（近日対応）"}
+                      {source.id === "podcast" && "音声を書き起こして表示"}
                       {source.id === "youtube" && "字幕を書き起こして表示"}
                     </p>
                   </div>
@@ -421,7 +481,18 @@ export function ImportScreen() {
                   {isAnalyzing ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>解析中...</span>
+                      <span>
+                        {jobStep === "fetching"
+                          ? "取得中"
+                          : jobStep === "transcribing"
+                            ? "音声書き起こし中"
+                            : jobStep === "translating"
+                              ? "翻訳中"
+                              : jobStep === "persisting"
+                                ? "保存中"
+                                : "処理中"}
+                        {jobId ? ` ${jobProgress}%` : "..."}
+                      </span>
                     </>
                   ) : (
                     <>
