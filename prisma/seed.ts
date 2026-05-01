@@ -168,6 +168,89 @@ const DECKS = [
   { name: "IT用語辞典", template: "詳細解説付き", color: "bg-rose-500" },
 ] as const
 
+const PUBLIC_DECK_CARDS: Record<
+  string,
+  ReadonlyArray<{
+    word: string
+    meaning: string
+    example?: string
+    explanation?: string
+  }>
+> = {
+  "TOEIC 900点突破 必須単語": [
+    { word: "comprehensive", meaning: "包括的な", example: "a comprehensive review" },
+    { word: "substantial", meaning: "かなりの", example: "a substantial increase" },
+    { word: "subsequent", meaning: "その後の", example: "subsequent meetings" },
+    { word: "preliminary", meaning: "予備の、暫定的な", example: "a preliminary report" },
+    { word: "forecast", meaning: "予測する／予測", example: "the sales forecast" },
+    { word: "allocate", meaning: "割り当てる", example: "allocate resources" },
+    { word: "diversify", meaning: "多様化する", example: "diversify the portfolio" },
+    { word: "procurement", meaning: "調達", example: "procurement department" },
+    { word: "compliance", meaning: "順守", example: "regulatory compliance" },
+    { word: "quarterly", meaning: "四半期ごとの", example: "quarterly earnings" },
+  ],
+  "英検1級 語彙完全攻略": [
+    { word: "ubiquitous", meaning: "どこにでもある、遍在する" },
+    { word: "nefarious", meaning: "極悪な、ひどく邪悪な" },
+    { word: "ephemeral", meaning: "つかの間の、はかない" },
+    { word: "pernicious", meaning: "有害な、致命的な" },
+    { word: "dichotomy", meaning: "二分法、二項対立" },
+    { word: "esoteric", meaning: "難解な、秘伝の" },
+    { word: "ostensible", meaning: "表面上の、見せかけの" },
+    { word: "vicissitude", meaning: "移り変わり、変遷" },
+    { word: "truculent", meaning: "粗暴な、攻撃的な" },
+    { word: "magnanimous", meaning: "寛大な、度量の大きい" },
+  ],
+  "基本情報技術者 用語集": [
+    { word: "algorithm", meaning: "アルゴリズム、解法手順" },
+    { word: "compiler", meaning: "コンパイラ" },
+    { word: "recursion", meaning: "再帰" },
+    { word: "inheritance", meaning: "継承（OOP）" },
+    { word: "polymorphism", meaning: "多態性、ポリモーフィズム" },
+    { word: "abstraction", meaning: "抽象化" },
+    { word: "middleware", meaning: "ミドルウェア" },
+    { word: "normalization", meaning: "正規化" },
+    { word: "redundancy", meaning: "冗長性" },
+    { word: "throughput", meaning: "スループット、処理能力" },
+  ],
+  "マクロ経済学 基礎用語": [
+    { word: "inflation", meaning: "インフレーション、物価上昇" },
+    { word: "deflation", meaning: "デフレーション、物価下落" },
+    { word: "recession", meaning: "景気後退" },
+    { word: "aggregate demand", meaning: "総需要" },
+    { word: "fiscal policy", meaning: "財政政策" },
+    { word: "monetary policy", meaning: "金融政策" },
+    { word: "gross domestic product", meaning: "国内総生産（GDP）" },
+    { word: "elasticity", meaning: "弾力性、弾性" },
+    { word: "equilibrium", meaning: "均衡、平衡" },
+    { word: "liquidity", meaning: "流動性" },
+  ],
+  "ビジネス英語 頻出フレーズ 200": [
+    { word: "circle back", meaning: "後で戻る、改めて連絡する" },
+    { word: "touch base", meaning: "連絡を取る、近況を共有する" },
+    { word: "align", meaning: "足並みを揃える、合わせる" },
+    { word: "streamline", meaning: "効率化する" },
+    { word: "leverage", meaning: "活用する、てこ入れする" },
+    { word: "bandwidth", meaning: "余力、対応キャパ" },
+    { word: "deliverable", meaning: "成果物" },
+    { word: "stakeholder", meaning: "関係者、利害関係者" },
+    { word: "synergy", meaning: "相乗効果、シナジー" },
+    { word: "onboarding", meaning: "新規受け入れ、オンボーディング" },
+  ],
+  "医学用語 基礎 400": [
+    { word: "diagnosis", meaning: "診断" },
+    { word: "prognosis", meaning: "予後" },
+    { word: "chronic", meaning: "慢性の" },
+    { word: "acute", meaning: "急性の" },
+    { word: "benign", meaning: "良性の" },
+    { word: "malignant", meaning: "悪性の" },
+    { word: "inflammation", meaning: "炎症" },
+    { word: "pathology", meaning: "病理（学）" },
+    { word: "symptom", meaning: "症状" },
+    { word: "remission", meaning: "寛解" },
+  ],
+}
+
 const PUBLIC_DECKS = [
   {
     name: "TOEIC 900点突破 必須単語",
@@ -380,11 +463,12 @@ async function main() {
 
   console.log("Creating public decks…")
   for (const pd of PUBLIC_DECKS) {
+    const cards = PUBLIC_DECK_CARDS[pd.name] ?? []
     await prisma.publicDeck.create({
       data: {
         ...pd,
-        description: `${pd.author} による${pd.category}デッキ。${pd.totalCards}枚収録。`,
-        cards: [] as Prisma.InputJsonValue, // Phase 1 では import = clone するだけのプレースホルダ
+        description: `${pd.author} による${pd.category}デッキ。${pd.totalCards}枚収録（うち${cards.length}枚をサンプル収録）。`,
+        cards: cards as unknown as Prisma.InputJsonValue,
       },
     })
   }

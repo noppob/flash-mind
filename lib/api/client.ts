@@ -10,13 +10,16 @@ export async function apiFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const isFormData =
+    typeof FormData !== "undefined" && init?.body instanceof FormData
+  const headers: Record<string, string> = {
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  }
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
   })
   if (res.status === 204) return undefined as T
   let body: unknown = null

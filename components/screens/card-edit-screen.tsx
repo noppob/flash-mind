@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { ChevronLeft, Sparkles, Flag, Save, Wand2, BookOpen, Loader2 } from "lucide-react"
 import { createCard, getCard, updateCard, toggleFlag } from "@/lib/api/cards"
+import { generateAi } from "@/lib/api/ai"
 import type { CardDetail } from "@/lib/api/types"
 
 export function CardEditScreen({
@@ -52,31 +53,47 @@ export function CardEditScreen({
     }
   }, [deckId, cardId, isNew])
 
-  // AI generation is mocked in Phase 1 (real Claude API integration in Phase 2).
-  const handleGenerateMeaning = () => {
+  const handleGenerateMeaning = async () => {
+    if (!word.trim()) return
     setGeneratingMeaning(true)
-    setTimeout(() => {
-      setMeaning((prev) => prev || "AI によるサンプル意味（Phase 2 で実 API 連携予定）")
+    try {
+      const { result } = await generateAi({ kind: "meaning", word: word.trim() })
+      if (result) setMeaning(result)
+    } catch (e) {
+      console.error(e)
+    } finally {
       setGeneratingMeaning(false)
-    }, 1200)
+    }
   }
-  const handleGenerateEtymology = () => {
+
+  const handleGenerateEtymology = async () => {
+    if (!word.trim()) return
     setGeneratingEtymology(true)
-    setTimeout(() => {
-      setEtymology(
-        "un-(否定) + pre-(前の) + cedent(行く) = 前例のない。ラテン語 praecedere に由来（モック）",
-      )
+    try {
+      const { result } = await generateAi({ kind: "etymology", word: word.trim() })
+      if (result) setEtymology(result)
+    } catch (e) {
+      console.error(e)
+    } finally {
       setGeneratingEtymology(false)
-    }, 1200)
+    }
   }
-  const handleGenerateExplanation = () => {
+
+  const handleGenerateExplanation = async () => {
+    if (!word.trim()) return
     setGeneratingExplanation(true)
-    setTimeout(() => {
-      setExplanation(
-        "形容詞。これまでに一度も起こったことがない、前例がない状態を表す（モック）",
-      )
+    try {
+      const { result } = await generateAi({
+        kind: "explanation",
+        word: word.trim(),
+        meaning: meaning.trim() || undefined,
+      })
+      if (result) setExplanation(result)
+    } catch (e) {
+      console.error(e)
+    } finally {
       setGeneratingExplanation(false)
-    }, 1200)
+    }
   }
 
   const handleToggleFlag = async () => {

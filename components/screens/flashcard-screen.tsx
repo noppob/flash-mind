@@ -15,10 +15,12 @@ import {
   Loader2,
   X,
   Check,
+  Volume2,
 } from "lucide-react"
 import { getDueCards } from "@/lib/api/decks"
 import { submitReviews } from "@/lib/api/reviews"
 import { toggleFlag, saveMemo } from "@/lib/api/cards"
+import { useTTS } from "@/hooks/use-tts"
 import type { CardDetail, ReviewItem, ReviewResult } from "@/lib/api/types"
 
 function HighlightedText({ text, highlight }: { text: string; highlight: string | null }) {
@@ -65,6 +67,7 @@ export function FlashcardScreen({
   const [memos, setMemos] = useState<Record<string, string>>({})
   const [reviewItems, setReviewItems] = useState<ReviewItem[]>([])
   const backScrollRef = useRef<HTMLDivElement>(null)
+  const tts = useTTS()
 
   useEffect(() => {
     let cancelled = false
@@ -244,6 +247,15 @@ export function FlashcardScreen({
                   <button onClick={(e) => { e.stopPropagation(); handleStar() }} {...stop} aria-label="Favorite">
                     <Star className={`w-5 h-5 ${card.flagged ? "text-amber-400 fill-amber-400" : "text-muted-foreground/40"}`} />
                   </button>
+                  {tts.supported && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); tts.speak(card.word) }}
+                      {...stop}
+                      aria-label="Pronounce word"
+                    >
+                      <Volume2 className={`w-5 h-5 ${tts.speaking ? "text-primary" : "text-muted-foreground/40"}`} />
+                    </button>
+                  )}
                   <span className="text-sm text-muted-foreground font-mono">{card.id.slice(-6)}</span>
                 </div>
                 {card.category && (
@@ -294,8 +306,20 @@ export function FlashcardScreen({
                 </button>
                 {showExample && card.example ? (
                   <div className="pr-8">
-                    <p className="text-sm leading-relaxed text-foreground">
-                      <HighlightedText text={card.example} highlight={card.exampleHighlight} />
+                    <p className="text-sm leading-relaxed text-foreground flex items-start gap-1.5">
+                      {tts.supported && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); tts.speak(card.example ?? "") }}
+                          {...stop}
+                          aria-label="Pronounce example"
+                          className="mt-0.5 flex-shrink-0"
+                        >
+                          <Volume2 className={`w-3.5 h-3.5 ${tts.speaking ? "text-primary" : "text-muted-foreground/50"}`} />
+                        </button>
+                      )}
+                      <span>
+                        <HighlightedText text={card.example} highlight={card.exampleHighlight} />
+                      </span>
                     </p>
                     {card.exampleJa && (
                       <p className="text-xs text-muted-foreground mt-1">{card.exampleJa}</p>
