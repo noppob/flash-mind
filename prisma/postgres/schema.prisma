@@ -1,15 +1,16 @@
-// FlashMind database schema — SQLite variant (opt-in for offline dev).
-// SYNC WITH ../schema.prisma — datasource block 以外のモデル定義は常にメインと同期させること。
-// 切替: pnpm db:generate:sqlite / pnpm db:migrate:sqlite
-//       DATABASE_URL=file:./dev.db pnpm dev
+// FlashMind database schema — PostgreSQL (Neon) primary.
+// SYNC WITH ./sqlite/schema.prisma — datasource block 以外は常に SQLite 版と同期させること。
+// Json columns are used to keep both providers compatible without provider-specific
+// types (text[]). Postgres backs them with `jsonb` automatically; SQLite stores TEXT.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (?pgbouncer=true&connection_limit=1)
+  directUrl = env("DIRECT_URL")   // direct connection for prisma migrate
 }
 
 // ===========================================================================

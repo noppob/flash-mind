@@ -1,16 +1,15 @@
-// FlashMind database schema — PostgreSQL (Neon) primary.
-// SYNC WITH ./sqlite/schema.prisma — datasource block 以外は常に SQLite 版と同期させること。
-// Json columns are used to keep both providers compatible without provider-specific
-// types (text[]). Postgres backs them with `jsonb` automatically; SQLite stores TEXT.
+// FlashMind database schema — SQLite / libSQL (Turso) primary.
+// 本番: Vercel から Turso (libSQL, 東京) に Driver Adapter 経由で接続。
+// 開発: prisma/dev.db に file: URL で接続。同じスキーマ・同じコードで両対応。
+// Postgres 版スキーマは prisma/postgres/ に保管 (将来戻したい時のリファレンス)。
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL") // pooled (?pgbouncer=true&connection_limit=1)
-  directUrl = env("DIRECT_URL")   // direct connection for prisma migrate
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
 }
 
 // ===========================================================================
