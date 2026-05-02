@@ -1,8 +1,9 @@
 /* eslint-disable no-console */
-import { PrismaClient, Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
+import { createPrismaClient } from "../lib/prisma"
 
-const prisma = new PrismaClient()
+const prisma = createPrismaClient()
 
 const FLASHCARD_DETAILS = [
   {

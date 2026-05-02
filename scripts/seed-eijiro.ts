@@ -11,10 +11,10 @@
 import fs from "node:fs"
 import readline from "node:readline"
 import iconv from "iconv-lite"
-import { PrismaClient } from "@prisma/client"
+import { createPrismaClient } from "../lib/prisma"
 import { parseLine, type ParsedEntry } from "../lib/dictionary/parse"
 
-const prisma = new PrismaClient()
+const prisma = createPrismaClient()
 
 const CHUNK = 2000
 const PROGRESS_EVERY = 100_000
