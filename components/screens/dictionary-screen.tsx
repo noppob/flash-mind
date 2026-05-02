@@ -79,10 +79,38 @@ export function DictionaryScreen({
   const [recent, setRecent] = useState<string[]>([])
   const [decks, setDecks] = useState<DeckSummary[]>([])
   const [pickerWord, setPickerWord] = useState<string | null>(null)
-  const [expandedGroup, setExpandedGroup] = useState<
-    { headword: string; list: DictionaryHit[] } | null
-  >(null)
+  const [expandedGroup, setExpandedGroup] = useState<{
+    headword: string
+    list: DictionaryHit[]
+    loading: boolean
+  } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const handleExpand = (headword: string, fallbackList: DictionaryHit[]) => {
+    setExpandedGroup({ headword, list: fallbackList, loading: true })
+    searchDictionary({
+      q: headword,
+      mode: "exact",
+      direction: "en2ja",
+      limit: 50,
+      distinct: false,
+    })
+      .then((res) => {
+        setExpandedGroup((prev) =>
+          prev && prev.headword === headword
+            ? { headword, list: res.hits.length > 0 ? res.hits : fallbackList, loading: false }
+            : prev,
+        )
+      })
+      .catch((e: unknown) => {
+        console.error(e)
+        setExpandedGroup((prev) =>
+          prev && prev.headword === headword
+            ? { headword, list: fallbackList, loading: false }
+            : prev,
+        )
+      })
+  }
 
   useEffect(() => {
     setRecent(readRecent())
@@ -373,7 +401,7 @@ export function DictionaryScreen({
                 headword={headword}
                 list={list}
                 onAdd={() => handleAddToCardClicked(headword)}
-                onExpand={() => setExpandedGroup({ headword, list })}
+                onExpand={() => handleExpand(headword, list)}
               />
             ))}
           </div>
@@ -398,8 +426,15 @@ export function DictionaryScreen({
                 <X className="w-4 h-4 text-muted-foreground" />
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mb-3">
-              {expandedGroup.list.length} 件のエントリ
+            <p className="text-xs text-muted-foreground mb-3 flex items-center gap-1.5">
+              {expandedGroup.loading ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  読み込み中…
+                </>
+              ) : (
+                <>{expandedGroup.list.length} 件のエントリ</>
+              )}
             </p>
             <div className="space-y-2">
               {expandedGroup.list.map((h, i) => (
@@ -518,7 +553,6 @@ function DictionaryGroupedCard({
   onExpand: () => void
 }) {
   const main = list[0]
-  const moreCount = list.length - 1
   return (
     <div
       role="button"
@@ -555,11 +589,9 @@ function DictionaryGroupedCard({
         )}
         {main.definition}
       </p>
-      {moreCount > 0 && (
-        <p className="text-[11px] text-primary mt-1.5">
-          + {moreCount} 件の意味（タップで展開）
-        </p>
-      )}
+      <p className="text-[11px] text-primary mt-1.5">
+        タップで全ての意味を表示
+      </p>
     </div>
   )
 }
