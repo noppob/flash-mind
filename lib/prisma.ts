@@ -1,5 +1,5 @@
 import { PrismaClient } from "@prisma/client"
-import { PrismaLibSql } from "@prisma/adapter-libsql"
+import { PrismaLibSQL } from "@prisma/adapter-libsql"
 
 function resolveDbUrl(): string {
   const url = process.env.DATABASE_URL ?? "file:./prisma/dev.db"
@@ -10,7 +10,7 @@ function resolveDbUrl(): string {
 }
 
 export function createPrismaClient(opts: { logQueries?: boolean } = {}): PrismaClient {
-  const adapter = new PrismaLibSql({
+  const adapter = new PrismaLibSQL({
     url: resolveDbUrl(),
     authToken: process.env.TURSO_AUTH_TOKEN,
   })
