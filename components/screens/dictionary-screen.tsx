@@ -79,6 +79,9 @@ export function DictionaryScreen({
   const [recent, setRecent] = useState<string[]>([])
   const [decks, setDecks] = useState<DeckSummary[]>([])
   const [pickerWord, setPickerWord] = useState<string | null>(null)
+  const [expandedGroup, setExpandedGroup] = useState<
+    { headword: string; list: DictionaryHit[] } | null
+  >(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -370,11 +373,49 @@ export function DictionaryScreen({
                 headword={headword}
                 list={list}
                 onAdd={() => handleAddToCardClicked(headword)}
+                onExpand={() => setExpandedGroup({ headword, list })}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Expanded entry overlay (全エントリ表示) */}
+      {expandedGroup && (
+        <div
+          className="absolute inset-0 z-30 bg-black/40 flex items-end"
+          onClick={() => setExpandedGroup(null)}
+        >
+          <div
+            className="w-full bg-card rounded-t-2xl p-4 pb-8 max-h-[85%] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-semibold text-foreground text-base">
+                {expandedGroup.headword}
+              </h3>
+              <button onClick={() => setExpandedGroup(null)}>
+                <X className="w-4 h-4 text-muted-foreground" />
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              {expandedGroup.list.length} 件のエントリ
+            </p>
+            <div className="space-y-2">
+              {expandedGroup.list.map((h, i) => (
+                <DictionaryEntryCard
+                  key={`${h.pos ?? ""}-${i}`}
+                  hit={h}
+                  onAdd={() => {
+                    setExpandedGroup(null)
+                    handleAddToCardClicked(h.headword)
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Deck picker overlay */}
       {pickerWord && (
@@ -469,20 +510,37 @@ function DictionaryGroupedCard({
   headword,
   list,
   onAdd,
+  onExpand,
 }: {
   headword: string
   list: DictionaryHit[]
   onAdd: () => void
+  onExpand: () => void
 }) {
   const main = list[0]
+  const moreCount = list.length - 1
   return (
-    <div className="bg-card border border-border rounded-xl p-3">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onExpand}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onExpand()
+        }
+      }}
+      className="bg-card border border-border rounded-xl p-3 cursor-pointer hover:bg-secondary/30 active:bg-secondary/50 transition-colors"
+    >
       <div className="flex items-baseline justify-between gap-2 mb-1">
         <span className="text-base font-semibold text-foreground truncate">
           {headword}
         </span>
         <button
-          onClick={onAdd}
+          onClick={(e) => {
+            e.stopPropagation()
+            onAdd()
+          }}
           className="flex items-center gap-1 text-xs text-primary font-medium px-2 py-1 rounded-lg bg-primary/10 hover:bg-primary/15 shrink-0"
         >
           <Plus className="w-3 h-3" />
@@ -497,6 +555,11 @@ function DictionaryGroupedCard({
         )}
         {main.definition}
       </p>
+      {moreCount > 0 && (
+        <p className="text-[11px] text-primary mt-1.5">
+          + {moreCount} 件の意味（タップで展開）
+        </p>
+      )}
     </div>
   )
 }

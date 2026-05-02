@@ -16,12 +16,6 @@ const SELECT = {
   aliasOf: true,
 } as const
 
-function detectProvider(): "postgresql" | "sqlite" {
-  if (process.env.DATABASE_PROVIDER === "sqlite") return "sqlite"
-  if (process.env.DATABASE_PROVIDER === "postgresql") return "postgresql"
-  return process.env.DATABASE_URL?.startsWith("file:") ? "sqlite" : "postgresql"
-}
-
 function normalize(input: string): string {
   return input.trim().toLowerCase()
 }
@@ -80,29 +74,11 @@ export async function searchPartial(
   const needle = normalize(query)
   if (!needle) return []
   const limit = opts.limit ?? 20
-
-  if (detectProvider() === "postgresql") {
-    if (opts.distinct) {
-      return prisma.$queryRaw<DictHit[]>`
-        SELECT DISTINCT ON ("headwordLower") headword, pos, definition, note, "aliasOf"
-        FROM "DictionaryEntry"
-        WHERE "headwordLower" % ${needle}
-        ORDER BY "headwordLower", similarity("headwordLower", ${needle}) DESC
-        LIMIT ${limit}
-      `
-    }
-    return prisma.$queryRaw<DictHit[]>`
-      SELECT headword, pos, definition, note, "aliasOf"
-      FROM "DictionaryEntry"
-      WHERE "headwordLower" % ${needle}
-      ORDER BY similarity("headwordLower", ${needle}) DESC
-      LIMIT ${limit}
-    `
-  }
   return prisma.dictionaryEntry.findMany({
     where: { headwordLower: { contains: needle } },
     take: limit,
     distinct: opts.distinct ? ["headwordLower"] : undefined,
+    orderBy: { headwordLower: "asc" },
     select: SELECT,
   })
 }
