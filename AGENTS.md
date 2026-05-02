@@ -101,9 +101,11 @@ e2e/                  # Playwright スモークテスト
 5. **`hooks/use-toast.ts` と `components/ui/use-toast.ts` が重複**
    - shadcn の生成都合。新規参照は `hooks/` を使う方針で統一
 
-6. **iPhone シェルは"開発時の見た目用"**
-   - `IPhoneShell` は固定サイズ (390x844) の枠を画面中央に表示するだけ
-   - 実機 / 実ブラウザ向けには将来的に外す or 切り替え可能にする想定
+6. **iPhone シェルは切り替え可能（既定はビューポート連動）**
+   - `IPhoneShell` は固定サイズ (390x844) の iPhone 風枠
+   - 既定では `md` (≥768px) で枠あり、それ未満ではフルスクリーン表示
+   - URL クエリで上書き可能: `?frame=on` で常に枠表示、`?frame=off` で常に枠なし
+   - Capacitor 等で実機ラップする際は `?frame=off` を初期 URL にする想定
 
 7. **GitHub 未登録**
    - リモートはまだない（`git remote -v` で確認可）。Vercel デプロイ前に登録する
