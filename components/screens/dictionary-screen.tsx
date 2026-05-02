@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import {
   ChevronLeft,
   Search,
@@ -498,6 +498,46 @@ export function DictionaryScreen({
   )
 }
 
+// definition 内の "→<英単語>" パターンを検出してクリック可能なリンクに変換する。
+// 英辞郎の本文には aliasOf に抽出されない参照表記 (例: "〈英〉→test a missile-defense system",
+// "<→target>") が混ざるため、ここでまとめてリンク化する。
+function renderDefinition(
+  text: string,
+  onAliasClick?: (alias: string) => void,
+): ReactNode {
+  if (!onAliasClick) return text
+  const re = /→([a-zA-Z][a-zA-Z0-9'\- ]*[a-zA-Z0-9])/g
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    const target = match[1]
+    parts.push("→")
+    parts.push(
+      <button
+        key={match.index}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onAliasClick(target.trim())
+        }}
+        className="text-primary hover:underline"
+      >
+        {target}
+      </button>,
+    )
+    lastIndex = re.lastIndex
+  }
+  if (parts.length === 0) return text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+  return <>{parts}</>
+}
+
 function DictionaryEntryCard({
   hit,
   onAdd,
@@ -529,7 +569,7 @@ function DictionaryEntryCard({
         </button>
       </div>
       <p className="text-sm text-foreground leading-relaxed">
-        {hit.definition}
+        {renderDefinition(hit.definition, onAliasClick)}
       </p>
       {hit.note && (
         <p className="text-xs text-muted-foreground mt-1.5 leading-relaxed">
