@@ -387,6 +387,7 @@ export function DictionaryScreen({
                 key={`${h.headword}-${h.pos ?? ""}-${i}`}
                 hit={h}
                 onAdd={() => handleAddToCardClicked(h.headword)}
+                onAliasClick={(alias) => handleExpand(alias, [])}
               />
             ))}
           </div>
@@ -445,6 +446,7 @@ export function DictionaryScreen({
                     setExpandedGroup(null)
                     handleAddToCardClicked(h.headword)
                   }}
+                  onAliasClick={(alias) => handleExpand(alias, [])}
                 />
               ))}
             </div>
@@ -499,9 +501,11 @@ export function DictionaryScreen({
 function DictionaryEntryCard({
   hit,
   onAdd,
+  onAliasClick,
 }: {
   hit: DictionaryHit
   onAdd: () => void
+  onAliasClick?: (alias: string) => void
 }) {
   return (
     <div className="bg-card border border-border rounded-xl p-3">
@@ -532,11 +536,20 @@ function DictionaryEntryCard({
           {hit.note}
         </p>
       )}
-      {hit.aliasOf && (
-        <p className="text-[11px] text-muted-foreground mt-1">
-          → 参照: {hit.aliasOf}
-        </p>
-      )}
+      {hit.aliasOf &&
+        (onAliasClick ? (
+          <button
+            type="button"
+            onClick={() => onAliasClick(hit.aliasOf!)}
+            className="text-[11px] text-primary mt-1 hover:underline"
+          >
+            → 参照: {hit.aliasOf}
+          </button>
+        ) : (
+          <p className="text-[11px] text-muted-foreground mt-1">
+            → 参照: {hit.aliasOf}
+          </p>
+        ))}
     </div>
   )
 }
